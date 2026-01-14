@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+
 	"go.tracewayapp.com/metrics/cpu"
 	"go.tracewayapp.com/metrics/mem"
 
@@ -670,6 +671,9 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 }
 
 func CaptureMetric(name string, value float64) {
+	if collectionFrameStore == nil {
+		return
+	}
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeMetric,
 		metric: &MetricRecord{
@@ -689,6 +693,9 @@ func CaptureTransaction(
 	statusCode, bodySize int,
 	clientIP string,
 ) {
+	if collectionFrameStore == nil {
+		return
+	}
 	CaptureTransactionWithScope(txn, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
 }
 
@@ -702,6 +709,9 @@ func CaptureTransactionWithScope(
 	clientIP string,
 	scope map[string]string,
 ) {
+	if collectionFrameStore == nil {
+		return
+	}
 	if txn == nil {
 		return
 	}
@@ -741,11 +751,17 @@ func StartSegment(ctx context.Context, name string) *ActiveSegment {
 
 // CaptureTransactionException captures an exception linked to a transaction (backward compatible)
 func CaptureTransactionException(transactionId string, stacktrace string) {
+	if collectionFrameStore == nil {
+		return
+	}
 	CaptureTransactionExceptionWithScope(transactionId, stacktrace, nil)
 }
 
 // CaptureTransactionExceptionWithScope captures an exception linked to a transaction with scope
 func CaptureTransactionExceptionWithScope(transactionId string, stacktrace string, scope map[string]string) {
+	if collectionFrameStore == nil {
+		return
+	}
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
@@ -759,11 +775,17 @@ func CaptureTransactionExceptionWithScope(transactionId string, stacktrace strin
 
 // CaptureException captures an exception without context (backward compatible)
 func CaptureException(err error) {
+	if collectionFrameStore == nil {
+		return
+	}
 	CaptureExceptionWithScope(err, nil, nil)
 }
 
 // CaptureExceptionWithScope captures an exception with scope
 func CaptureExceptionWithScope(err error, scope map[string]string, transactionId *string) {
+	if collectionFrameStore == nil {
+		return
+	}
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
@@ -777,6 +799,9 @@ func CaptureExceptionWithScope(err error, scope map[string]string, transactionId
 
 // CaptureExceptionWithContext captures an exception extracting scope from context
 func CaptureExceptionWithContext(ctx context.Context, err error) {
+	if collectionFrameStore == nil {
+		return
+	}
 	scope := GetScopeFromContext(ctx)
 	CaptureExceptionWithScope(err, scope.GetTags(), GetTransactionIdFromContext(ctx))
 }
@@ -786,6 +811,9 @@ func Recover() {
 	r := recover()
 
 	if r != nil {
+		if collectionFrameStore == nil {
+			return
+		}
 		collectionFrameStore.messageQueue <- CollectionFrameMessage{
 			msgType: CollectionFrameMessageTypeException,
 			exceptionStackTrace: &ExceptionStackTrace{
@@ -802,6 +830,9 @@ func RecoverWithContext(ctx context.Context) {
 	r := recover()
 
 	if r != nil {
+		if collectionFrameStore == nil {
+			return
+		}
 		scope := GetScopeFromContext(ctx)
 		collectionFrameStore.messageQueue <- CollectionFrameMessage{
 			msgType: CollectionFrameMessageTypeException,
@@ -817,6 +848,9 @@ func RecoverWithContext(ctx context.Context) {
 
 // CaptureMessage captures a message as an exception with minimal stack trace
 func CaptureMessage(msg string) {
+	if collectionFrameStore == nil {
+		return
+	}
 	CaptureMessageWithContext(context.Background(), msg)
 }
 
