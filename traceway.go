@@ -874,3 +874,60 @@ func CaptureMessageWithContext(ctx context.Context, msg string) {
 		},
 	}
 }
+
+type PanicError struct {
+	Value interface{}
+	Stack string
+}
+
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("%v\n%s", e.Value, e.Stack)
+}
+
+func wrapAndExecute(ctx *context.Context, f func(ctx *context.Context)) (s *string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			m := FormatRWithStack(r, CaptureStack(2))
+			s = &m
+
+			var errFromRecover error
+			switch v := r.(type) {
+			case error:
+				errFromRecover = v
+			default:
+				errFromRecover = fmt.Errorf("%v", v)
+			}
+
+			// we should repanic whenever the users function panics so that the user can handle it
+			err = &PanicError{Value: errFromRecover, Stack: m}
+		}
+	}()
+
+	f(ctx)
+
+	return nil, nil
+}
+
+func MeasureTransaction(title string, f func(ctx *context.Context)) {
+	txn := &TransactionContext{
+		Id: uuid.NewString(),
+	}
+	scope := NewScope()
+	start := time.Now()
+
+	ctx := context.WithValue(context.Background(), string(CtxScopeKey), scope)
+	ctx = context.WithValue(ctx, string(CtxTransactionKey), txn)
+
+	stackTraceFormatted, err := wrapAndExecute(&ctx, f)
+
+	duration := time.Since(start)
+	CaptureTransactionWithScope(txn, title, duration, start, 200, 0, "", scope.GetTags())
+
+	if stackTraceFormatted != nil {
+		CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, scope.GetTags())
+	}
+
+	if err != nil {
+		panic(err)
+	}
+}

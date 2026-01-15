@@ -6,7 +6,8 @@ import (
 	"os"
 	"sync"
 	"time"
-	"go.tracewayapp.com"
+
+	traceway "go.tracewayapp.com"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -44,6 +45,7 @@ func wrapAndExecute(c *gin.Context) (s *string) {
 			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
 			s = &m
 			// we don't propagate just report
+			// TODO: This should be configurable
 			c.AbortWithStatus(http.StatusInternalServerError)
 		}
 	}()
