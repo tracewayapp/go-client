@@ -246,6 +246,7 @@ func FormatErrorWithStack(err error, frames []runtime.Frame) string {
 
 type ExceptionStackTrace struct {
 	TransactionId *string           `json:"transactionId"`
+	IsTask        bool              `json:"isTask,omitempty"`
 	StackTrace    string            `json:"stackTrace"`
 	RecordedAt    time.Time         `json:"recordedAt"`
 	Scope         map[string]string `json:"scope,omitempty"`
@@ -268,6 +269,7 @@ type Transaction struct {
 	ClientIP   string            `json:"clientIP"`
 	Scope      map[string]string `json:"scope,omitempty"`
 	Segments   []Segment         `json:"segments,omitempty"`
+	IsTask     bool              `json:"isTask,omitempty"`
 }
 
 // Segment represents a timed slice within a transaction
@@ -733,6 +735,62 @@ func CaptureTransactionWithScope(
 	}
 }
 
+// CaptureTask captures a background task (without status code and body size)
+func CaptureTask(
+	txn *TransactionContext,
+	taskName string,
+	d time.Duration,
+	startedAt time.Time,
+	scope map[string]string,
+) {
+	if collectionFrameStore == nil {
+		return
+	}
+	if txn == nil {
+		return
+	}
+	collectionFrameStore.messageQueue <- CollectionFrameMessage{
+		msgType: CollectionFrameMessageTypeTransaction,
+		transaction: &Transaction{
+			Id:         txn.Id,
+			Endpoint:   taskName, // Task name is stored in Endpoint field
+			Duration:   d,
+			RecordedAt: startedAt,
+			StatusCode: 0,
+			BodySize:   0,
+			ClientIP:   "",
+			Scope:      scope,
+			Segments:   txn.GetSegments(),
+			IsTask:     true,
+		},
+	}
+}
+
+// CaptureTaskException captures an exception linked to a task
+func CaptureTaskException(transactionId string, stacktrace string) {
+	if collectionFrameStore == nil {
+		return
+	}
+	CaptureTaskExceptionWithScope(transactionId, stacktrace, nil)
+}
+
+// CaptureTaskExceptionWithScope captures an exception linked to a task with scope
+func CaptureTaskExceptionWithScope(transactionId string, stacktrace string, scope map[string]string) {
+	if collectionFrameStore == nil {
+		return
+	}
+	collectionFrameStore.messageQueue <- CollectionFrameMessage{
+		msgType: CollectionFrameMessageTypeException,
+		exceptionStackTrace: &ExceptionStackTrace{
+			TransactionId: &transactionId,
+			IsTask:        true,
+			StackTrace:    stacktrace,
+			RecordedAt:    time.Now(),
+			Scope:         scope,
+		},
+	}
+}
+
 // StartSegment starts a segment using transaction ID from context
 func StartSegment(ctx context.Context, name string) *ActiveSegment {
 	txn := GetTransactionFromContext(ctx)
@@ -925,6 +983,31 @@ func MeasureTransaction(title string, f func(ctx *context.Context)) {
 
 	if stackTraceFormatted != nil {
 		CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, scope.GetTags())
+	}
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+// MeasureTask measures and captures a background task
+func MeasureTask(title string, f func(ctx *context.Context)) {
+	txn := &TransactionContext{
+		Id: uuid.NewString(),
+	}
+	scope := NewScope()
+	start := time.Now()
+
+	ctx := context.WithValue(context.Background(), string(CtxScopeKey), scope)
+	ctx = context.WithValue(ctx, string(CtxTransactionKey), txn)
+
+	stackTraceFormatted, err := wrapAndExecute(&ctx, f)
+
+	duration := time.Since(start)
+	CaptureTask(txn, title, duration, start, scope.GetTags())
+
+	if stackTraceFormatted != nil {
+		CaptureTaskExceptionWithScope(txn.Id, *stackTraceFormatted, scope.GetTags())
 	}
 
 	if err != nil {
