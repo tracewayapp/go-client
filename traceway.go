@@ -47,6 +47,21 @@ func (s *Scope) SetTag(key, value string) {
 	s.tags[key] = value
 }
 
+func (s *Scope) SetTagJson(key string, value interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	valueStr, err := json.Marshal(value)
+
+	if err != nil {
+		return err
+	}
+
+	s.tags[key] = string(valueStr)
+
+	return nil
+}
+
 // GetTag gets a tag from the scope
 func (s *Scope) GetTag(key string) (string, bool) {
 	s.mu.RLock()
