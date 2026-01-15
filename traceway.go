@@ -860,20 +860,12 @@ func CaptureMessageWithContext(ctx context.Context, msg string) {
 		return
 	}
 
-	_, file, line, ok := runtime.Caller(1)
-	if !ok {
-		file = "unknown"
-		line = 0
-	}
-
-	stackTrace := fmt.Sprintf("Message: %s\n    at %s:%d", msg, file, line)
-
 	scope := GetScopeFromContext(ctx)
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
 			TransactionId: GetTransactionIdFromContext(ctx),
-			StackTrace:    stackTrace,
+			StackTrace:    msg,
 			RecordedAt:    time.Now(),
 			Scope:         scope.GetTags(),
 			IsMessage:     true,
