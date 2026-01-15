@@ -161,27 +161,14 @@ func getHostname() string {
 		if err != nil {
 			cachedHostname = "unknown"
 		} else {
-			cachedHostname = hostname
+			if strings.Contains(hostname, ".") {
+				cachedHostname = hostname[0:strings.Index(hostname, ".")]
+			} else {
+				cachedHostname = hostname
+			}
 		}
 	})
 	return cachedHostname
-}
-
-// GetEnvironment returns the environment from TRACEWAY_ENV or GO_ENV
-var cachedEnvironment string
-var envOnce sync.Once
-
-func getEnvironment() string {
-	envOnce.Do(func() {
-		cachedEnvironment = os.Getenv("TRACEWAY_ENV")
-		if cachedEnvironment == "" {
-			cachedEnvironment = os.Getenv("GO_ENV")
-		}
-		if cachedEnvironment == "" {
-			cachedEnvironment = "development"
-		}
-	})
-	return cachedEnvironment
 }
 
 func CaptureStack(skip int) []runtime.Frame {
