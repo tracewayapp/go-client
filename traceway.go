@@ -942,7 +942,7 @@ func (e *PanicError) Error() string {
 	return fmt.Sprintf("%v\n%s", e.Value, e.Stack)
 }
 
-func wrapAndExecute(ctx *context.Context, f func(ctx *context.Context)) (s *string, err error) {
+func wrapAndExecute(ctx context.Context, f TaskExecutor) (s *string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			m := FormatRWithStack(r, CaptureStack(2))
@@ -966,32 +966,10 @@ func wrapAndExecute(ctx *context.Context, f func(ctx *context.Context)) (s *stri
 	return nil, nil
 }
 
-func MeasureTransaction(title string, f func(ctx *context.Context)) {
-	txn := &TransactionContext{
-		Id: uuid.NewString(),
-	}
-	scope := NewScope()
-	start := time.Now()
-
-	ctx := context.WithValue(context.Background(), string(CtxScopeKey), scope)
-	ctx = context.WithValue(ctx, string(CtxTransactionKey), txn)
-
-	stackTraceFormatted, err := wrapAndExecute(&ctx, f)
-
-	duration := time.Since(start)
-	CaptureTransactionWithScope(txn, title, duration, start, 200, 0, "", scope.GetTags())
-
-	if stackTraceFormatted != nil {
-		CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, scope.GetTags())
-	}
-
-	if err != nil {
-		panic(err)
-	}
-}
+type TaskExecutor = func(ctx context.Context)
 
 // MeasureTask measures and captures a background task
-func MeasureTask(title string, f func(ctx *context.Context)) {
+func MeasureTask(title string, f TaskExecutor) {
 	txn := &TransactionContext{
 		Id: uuid.NewString(),
 	}
@@ -1001,7 +979,7 @@ func MeasureTask(title string, f func(ctx *context.Context)) {
 	ctx := context.WithValue(context.Background(), string(CtxScopeKey), scope)
 	ctx = context.WithValue(ctx, string(CtxTransactionKey), txn)
 
-	stackTraceFormatted, err := wrapAndExecute(&ctx, f)
+	stackTraceFormatted, err := wrapAndExecute(ctx, f)
 
 	duration := time.Since(start)
 	CaptureTask(txn, title, duration, start, scope.GetTags())

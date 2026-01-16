@@ -1,61 +1,17 @@
 package tracewaygin
 
 import (
-	"context"
-	"net/http"
-	"os"
-	"sync"
 	"time"
 
 	traceway "go.tracewayapp.com"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
-// Cached values for default scope tags
-var (
-	cachedHostname    string
-	cachedEnvironment string
-	initOnce          sync.Once
-)
-
-func initCachedValues() {
-	initOnce.Do(func() {
-		hostname, err := os.Hostname()
-		if err != nil {
-			cachedHostname = "unknown"
-		} else {
-			cachedHostname = hostname
-		}
-
-		cachedEnvironment = os.Getenv("TRACEWAY_ENV")
-		if cachedEnvironment == "" {
-			cachedEnvironment = os.Getenv("GO_ENV")
-		}
-		if cachedEnvironment == "" {
-			cachedEnvironment = "development"
-		}
-	})
-}
-
-func wrapAndExecute(c *gin.Context) (s *string) {
-	defer func() {
-		if r := recover(); r != nil {
-			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
-			s = &m
-			// we don't propagate just report
-			// TODO: This should be configurable
-			c.AbortWithStatus(http.StatusInternalServerError)
-		}
-	}()
-	c.Next()
-	return nil
 }
 
 func New(connectionString string, options ...func(*traceway.TracewayOptions)) gin.HandlerFunc {
 	traceway.Init(connectionString, options...)
-	initCachedValues()
 
 	return func(c *gin.Context) {
 		start := time.Now()
