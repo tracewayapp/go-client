@@ -469,7 +469,6 @@ func (s *CollectionFrameStore) process() {
 		case <-s.stopCh:
 			return
 		case <-rotationTicker.C:
-			fmt.Println("TICKER RUNNING", s.current, s.sendQueue.len)
 			if s.current != nil {
 				if s.currentSetAt.Before(time.Now().Add(-s.collectionInterval)) {
 					s.rotateCurrentCollectionFrame()
