@@ -99,6 +99,7 @@ var defaultScope = NewScope()
 // TransactionContext holds transaction data including segments
 type TransactionContext struct {
 	Id       string
+	IsTask   bool // indicates if this is a task transaction
 	Segments []Segment
 	mu       sync.Mutex
 }
@@ -164,6 +165,14 @@ func GetTransactionIdFromContext(ctx context.Context) *string {
 		return &txn.Id
 	}
 	return nil
+}
+
+// GetIsTaskFromContext checks if the current transaction is a task
+func GetIsTaskFromContext(ctx context.Context) bool {
+	if txn := GetTransactionFromContext(ctx); txn != nil {
+		return txn.IsTask
+	}
+	return false
 }
 
 // GetHostname returns the hostname, cached for efficiency
@@ -460,6 +469,7 @@ func (s *CollectionFrameStore) process() {
 		case <-s.stopCh:
 			return
 		case <-rotationTicker.C:
+			fmt.Println("TICKER RUNNING", s.current, s.sendQueue.len)
 			if s.current != nil {
 				if s.currentSetAt.Before(time.Now().Add(-s.collectionInterval)) {
 					s.rotateCurrentCollectionFrame()
@@ -863,7 +873,17 @@ func CaptureExceptionWithContext(ctx context.Context, err error) {
 		return
 	}
 	scope := GetScopeFromContext(ctx)
-	CaptureExceptionWithScope(err, scope.GetTags(), GetTransactionIdFromContext(ctx))
+	isTask := GetIsTaskFromContext(ctx)
+	collectionFrameStore.messageQueue <- CollectionFrameMessage{
+		msgType: CollectionFrameMessageTypeException,
+		exceptionStackTrace: &ExceptionStackTrace{
+			TransactionId: GetTransactionIdFromContext(ctx),
+			IsTask:        isTask,
+			StackTrace:    FormatErrorWithStack(err, CaptureStack(2)),
+			RecordedAt:    time.Now(),
+			Scope:         scope.GetTags(),
+		},
+	}
 }
 
 // Recover recovers from panic and captures it (backward compatible, no scope)
@@ -921,10 +941,12 @@ func CaptureMessageWithContext(ctx context.Context, msg string) {
 	}
 
 	scope := GetScopeFromContext(ctx)
+	isTask := GetIsTaskFromContext(ctx)
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
 			TransactionId: GetTransactionIdFromContext(ctx),
+			IsTask:        isTask,
 			StackTrace:    msg,
 			RecordedAt:    time.Now(),
 			Scope:         scope.GetTags(),
@@ -971,7 +993,8 @@ type TaskExecutor = func(ctx context.Context)
 // MeasureTask measures and captures a background task
 func MeasureTask(title string, f TaskExecutor) {
 	txn := &TransactionContext{
-		Id: uuid.NewString(),
+		Id:     uuid.NewString(),
+		IsTask: true,
 	}
 	scope := NewScope()
 	start := time.Now()
