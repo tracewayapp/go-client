@@ -25,8 +25,59 @@ func wrapAndExecute(c *gin.Context) (s *string) {
 	return nil
 }
 
-func New(connectionString string, options ...func(*traceway.TracewayOptions)) gin.HandlerFunc {
-	traceway.Init(connectionString, options...)
+type TracewayGinOptions struct {
+	tracewayOpts []func(*traceway.TracewayOptions)
+	repanic      bool
+}
+
+func WithRepanic(val bool) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.repanic = val
+	}
+}
+func WithDebug(val bool) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithDebug(val))
+	}
+}
+func WithMaxCollectionFrames(val int) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithMaxCollectionFrames(val))
+	}
+}
+func WithCollectionInterval(val time.Duration) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithCollectionInterval(val))
+	}
+}
+func WithUploadTimeout(val time.Duration) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithUploadTimeout(val))
+	}
+}
+func WithMetricsInterval(val time.Duration) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithMetricsInterval(val))
+	}
+}
+func WithVersion(val string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithVersion(val))
+	}
+}
+func WithServerName(val string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithServerName(val))
+	}
+}
+
+func New(connectionString string, options ...func(*TracewayGinOptions)) gin.HandlerFunc {
+	opts := &TracewayGinOptions{repanic: true}
+	for _, o := range options {
+		o(opts)
+	}
+
+	traceway.Init(connectionString, opts.tracewayOpts...)
 
 	return func(c *gin.Context) {
 		start := time.Now()
