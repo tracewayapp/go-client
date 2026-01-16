@@ -1,13 +1,28 @@
 package tracewaygin
 
 import (
+	"context"
+	"net/http"
 	"time"
 
 	traceway "go.tracewayapp.com"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
+func wrapAndExecute(c *gin.Context) (s *string) {
+	defer func() {
+		if r := recover(); r != nil {
+			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
+			s = &m
+			// we don't propagate just report
+			// TODO: This should be configurable
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}
+	}()
+	c.Next()
+	return nil
 }
 
 func New(connectionString string, options ...func(*traceway.TracewayOptions)) gin.HandlerFunc {
