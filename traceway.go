@@ -167,7 +167,6 @@ func GetTransactionIdFromContext(ctx context.Context) *string {
 	return nil
 }
 
-// GetIsTaskFromContext checks if the current transaction is a task
 func GetIsTaskFromContext(ctx context.Context) bool {
 	if txn := GetTransactionFromContext(ctx); txn != nil {
 		return txn.IsTask
@@ -175,7 +174,20 @@ func GetIsTaskFromContext(ctx context.Context) bool {
 	return false
 }
 
-// GetHostname returns the hostname, cached for efficiency
+func StartTransaction(ctx context.Context) context.Context {
+	txn := &TransactionContext{
+		Id:     uuid.NewString(),
+		IsTask: false,
+	}
+
+	scope := GetScopeFromContext(ctx)
+
+	ctx = context.WithValue(ctx, CtxTransactionKey, txn)
+	ctx = context.WithValue(ctx, CtxScopeKey, scope)
+
+	return ctx
+}
+
 var cachedHostname string
 var hostnameOnce sync.Once
 
@@ -949,6 +961,23 @@ func CaptureMessageWithContext(ctx context.Context, msg string) {
 			StackTrace:    msg,
 			RecordedAt:    time.Now(),
 			Scope:         scope.GetTags(),
+			IsMessage:     true,
+		},
+	}
+}
+
+// CaptureMessageScope captures a message with an explicit scope map
+func CaptureMessageScope(msg string, scope map[string]string) {
+	if collectionFrameStore == nil {
+		return
+	}
+	collectionFrameStore.messageQueue <- CollectionFrameMessage{
+		msgType: CollectionFrameMessageTypeException,
+		exceptionStackTrace: &ExceptionStackTrace{
+			TransactionId: nil,
+			StackTrace:    msg,
+			RecordedAt:    time.Now(),
+			Scope:         scope,
 			IsMessage:     true,
 		},
 	}
