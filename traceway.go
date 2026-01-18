@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -990,6 +991,40 @@ type PanicError struct {
 
 func (e *PanicError) Error() string {
 	return fmt.Sprintf("%v\n%s", e.Value, e.Stack)
+}
+
+type StackTraceError struct {
+	Err    error
+	Frames []runtime.Frame
+}
+
+func (e *StackTraceError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return ""
+}
+
+func (e *StackTraceError) Unwrap() error {
+	return e.Err
+}
+
+func (e *StackTraceError) GetStackFrames() []runtime.Frame {
+	return e.Frames
+}
+
+func NewStackTraceError(msg string, skip int) *StackTraceError {
+	return &StackTraceError{
+		Err:    errors.New(msg),
+		Frames: CaptureStack(skip + 1),
+	}
+}
+
+func WrapWithStackTrace(err error, skip int) *StackTraceError {
+	return &StackTraceError{
+		Err:    err,
+		Frames: CaptureStack(skip + 1),
+	}
 }
 
 func wrapAndExecute(ctx context.Context, f TaskExecutor) (s *string, err error) {

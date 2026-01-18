@@ -3,9 +3,14 @@ package tracewaygin
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
+	"runtime"
+	"strings"
 	"time"
 
 	traceway "go.tracewayapp.com"
@@ -13,6 +18,38 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+func extractStackFromError(err error) []runtime.Frame {
+	var stackErr *traceway.StackTraceError
+	if errors.As(err, &stackErr) {
+		return stackErr.GetStackFrames()
+	}
+	return nil
+}
+
+func formatErrorChain(err error) string {
+	var sb strings.Builder
+	errType := reflect.TypeOf(err).String()
+	fmt.Fprintf(&sb, "%s: %s", errType, err.Error())
+
+	return sb.String()
+}
+
+func processGinErrors(c *gin.Context, txn *traceway.TransactionContext, exceptionTags map[string]string) {
+	for _, ginErr := range c.Errors {
+		err := ginErr.Err
+		embeddedStack := extractStackFromError(err)
+
+		var formatted string
+		if embeddedStack != nil {
+			formatted = traceway.FormatErrorWithStack(err, embeddedStack)
+		} else {
+			formatted = formatErrorChain(err)
+		}
+
+		traceway.CaptureTransactionExceptionWithScope(txn.Id, formatted, exceptionTags)
+	}
+}
 
 func wrapAndExecute(repanic bool, c *gin.Context) (s *string) {
 	defer func() {
@@ -164,9 +201,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 
 		traceway.CaptureTransactionWithScope(txn, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
-		if stackTraceFormatted != nil {
-			exceptionTags := map[string]string{}
+		exceptionTags := map[string]string{}
 
+		hasGinContextError := len(c.Errors) > 0 && stackTraceFormatted == nil
+
+		if stackTraceFormatted != nil || hasGinContextError {
 			for k, v := range scope.GetTags() {
 				exceptionTags[k] = v
 			}
@@ -174,10 +213,12 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			exceptionTags["user_agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
 
 			if opts.onErrorRecording&RecordingUrl > 0 {
-				scope.SetTag("url", c.Request.URL.Path)
+				exceptionTags["url"] = c.Request.URL.Path
 			}
 			if opts.onErrorRecording&RecordingQuery > 0 {
-				scope.SetTagJson("query params", c.Request.URL.Query())
+				if queryJson, err := json.Marshal(c.Request.URL.Query()); err == nil {
+					exceptionTags["query"] = string(queryJson)
+				}
 			}
 			if opts.onErrorRecording&RecordingBody > 0 && c.ContentType() == "application/json" {
 				limitedBody, err := io.ReadAll(io.LimitReader(c.Request.Body, bodyLimitForReporting))
@@ -189,13 +230,22 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 						c.Request.Body, // the rest of the body
 					))
 
-					scope.SetTagJson("body", string(limitedBody))
+					exceptionTags["body"] = string(limitedBody)
 				}
 			}
 			if opts.onErrorRecording&RecordingHeader > 0 {
-				scope.SetTagJson("headers", c.Request.Header)
+				if headersJson, err := json.Marshal(c.Request.Header); err == nil {
+					exceptionTags["headers"] = string(headersJson)
+				}
 			}
+		}
+
+		if stackTraceFormatted != nil {
 			traceway.CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, exceptionTags)
+		}
+
+		if len(c.Errors) > 0 && stackTraceFormatted == nil {
+			processGinErrors(c, txn, exceptionTags)
 		}
 	}
 }
