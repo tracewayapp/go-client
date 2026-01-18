@@ -51,10 +51,10 @@ const (
 const bodyLimitForReporting = int64(64 * 1024)
 
 type TracewayGinOptions struct {
-	tracewayOpts    []func(*traceway.TracewayOptions)
-	repanic         bool
-	recordUnmatched bool
-	recording       RecordingFlag
+	tracewayOpts     []func(*traceway.TracewayOptions)
+	repanic          bool
+	recordUnmatched  bool
+	onErrorRecording RecordingFlag
 }
 
 func WithRecordUnmatched(val bool) func(*TracewayGinOptions) {
@@ -63,9 +63,9 @@ func WithRecordUnmatched(val bool) func(*TracewayGinOptions) {
 	}
 }
 
-func WithRecording(val RecordingFlag) func(*TracewayGinOptions) {
+func WithOnErrorRecording(val RecordingFlag) func(*TracewayGinOptions) {
 	return func(s *TracewayGinOptions) {
-		s.recording = val
+		s.onErrorRecording = val
 	}
 }
 
@@ -111,7 +111,7 @@ func WithServerName(val string) func(*TracewayGinOptions) {
 }
 
 func New(connectionString string, options ...func(*TracewayGinOptions)) gin.HandlerFunc {
-	opts := &TracewayGinOptions{repanic: true, recordUnmatched: false, recording: 0}
+	opts := &TracewayGinOptions{repanic: true, recordUnmatched: false, onErrorRecording: 0}
 	for _, o := range options {
 		o(opts)
 	}
@@ -162,34 +162,39 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 
 		defer recover()
 
-		if opts.recording&RecordingUrl > 0 {
-			scope.SetTag("url", c.Request.URL.Path)
-		}
-		if opts.recording&RecordingQuery > 0 {
-			scope.SetTagJson("query params", c.Request.URL.Query())
-		}
-		if opts.recording&RecordingBody > 0 && c.ContentType() == "application/json" {
-			limitedBody, err := io.ReadAll(io.LimitReader(c.Request.Body, bodyLimitForReporting))
-
-			if err == nil {
-				// restore what we read + whatever remains unread
-				c.Request.Body = io.NopCloser(io.MultiReader(
-					bytes.NewBuffer(limitedBody),
-					c.Request.Body, // the rest of the body
-				))
-
-				scope.SetTagJson("body", string(limitedBody))
-			}
-		}
-		if opts.recording&RecordingHeader > 0 {
-			scope.SetTagJson("headers", c.Request.Header)
-		}
-
 		traceway.CaptureTransactionWithScope(txn, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
 		if stackTraceFormatted != nil {
-			exceptionTags := scope.GetTags()
+			exceptionTags := map[string]string{}
+
+			for k, v := range scope.GetTags() {
+				exceptionTags[k] = v
+			}
+
 			exceptionTags["user_agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
+
+			if opts.onErrorRecording&RecordingUrl > 0 {
+				scope.SetTag("url", c.Request.URL.Path)
+			}
+			if opts.onErrorRecording&RecordingQuery > 0 {
+				scope.SetTagJson("query params", c.Request.URL.Query())
+			}
+			if opts.onErrorRecording&RecordingBody > 0 && c.ContentType() == "application/json" {
+				limitedBody, err := io.ReadAll(io.LimitReader(c.Request.Body, bodyLimitForReporting))
+
+				if err == nil {
+					// restore what we read + whatever remains unread
+					c.Request.Body = io.NopCloser(io.MultiReader(
+						bytes.NewBuffer(limitedBody),
+						c.Request.Body, // the rest of the body
+					))
+
+					scope.SetTagJson("body", string(limitedBody))
+				}
+			}
+			if opts.onErrorRecording&RecordingHeader > 0 {
+				scope.SetTagJson("headers", c.Request.Header)
+			}
 			traceway.CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, exceptionTags)
 		}
 	}
