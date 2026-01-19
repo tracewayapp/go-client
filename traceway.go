@@ -1013,9 +1013,21 @@ func (e *StackTraceError) GetStackFrames() []runtime.Frame {
 	return e.Frames
 }
 
-func NewStackTraceError(msg string) *StackTraceError {
+func NewStackTraceErrorf(format string, args ...any) *StackTraceError {
+	// if the error is already a StackTraceError we should not recapture frames
+	err := fmt.Errorf(format, args...)
+
+	// I hate how stupid this is but I think this is the "right" way to do this
+	var existing *StackTraceError
+	if errors.As(err, &existing) {
+		return &StackTraceError{
+			Err:    err,
+			Frames: existing.Frames, // reuse existing stack
+		}
+	}
+
 	return &StackTraceError{
-		Err:    errors.New(msg),
+		Err:    err,
 		Frames: CaptureStack(1),
 	}
 }
