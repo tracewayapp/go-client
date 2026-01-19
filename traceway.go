@@ -1013,10 +1013,10 @@ func (e *StackTraceError) GetStackFrames() []runtime.Frame {
 	return e.Frames
 }
 
-func NewStackTraceError(msg string, skip int) *StackTraceError {
+func NewStackTraceError(msg string) *StackTraceError {
 	return &StackTraceError{
 		Err:    errors.New(msg),
-		Frames: CaptureStack(skip + 1),
+		Frames: CaptureStack(1),
 	}
 }
 

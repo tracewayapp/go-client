@@ -207,17 +207,22 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 
 		if stackTraceFormatted != nil || hasGinContextError {
 			for k, v := range scope.GetTags() {
-				exceptionTags[k] = v
+				if k != "User-Agent" { // we add user-agent as a separate tag
+					exceptionTags[k] = v
+				}
 			}
 
-			exceptionTags["user_agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
+			exceptionTags["user agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
 
 			if opts.onErrorRecording&RecordingUrl > 0 {
 				exceptionTags["url"] = c.Request.URL.Path
 			}
 			if opts.onErrorRecording&RecordingQuery > 0 {
-				if queryJson, err := json.Marshal(c.Request.URL.Query()); err == nil {
-					exceptionTags["query"] = string(queryJson)
+				query := c.Request.URL.Query()
+				if len(map[string][]string(query)) > 0 {
+					if queryJson, err := json.Marshal(query); err == nil {
+						exceptionTags["query"] = string(queryJson)
+					}
 				}
 			}
 			if opts.onErrorRecording&RecordingBody > 0 && c.ContentType() == "application/json" {
