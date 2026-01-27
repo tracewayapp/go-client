@@ -51,7 +51,7 @@ func processGinErrors(c *gin.Context, txn *traceway.TransactionContext, exceptio
 	}
 }
 
-func wrapAndExecute(repanic bool, c *gin.Context) (s *string) {
+func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
 	defer func() {
 		if r := recover(); r != nil {
 			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
@@ -63,9 +63,10 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string) {
 				case error:
 					errFromRecover = v
 				default:
-					errFromRecover = fmt.Errorf("%v", v)
+					errFromRecover = fmt.Errorf("traceway repanic: %w", v)
 				}
-				panic(traceway.PanicError{Value: errFromRecover, Stack: m})
+
+				e = errFromRecover
 			} else {
 				// we don't propagate just report
 				c.AbortWithStatus(http.StatusInternalServerError)
@@ -73,7 +74,7 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string) {
 		}
 	}()
 	c.Next()
-	return nil
+	return nil, nil
 }
 
 type RecordingFlag byte
@@ -184,7 +185,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		c.Set(string(traceway.CtxScopeKey), scope)
 		c.Set(string(traceway.CtxTransactionKey), txn)
 
-		stackTraceFormatted := wrapAndExecute(opts.repanic, c)
+		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
+
+		if err != nil {
+			defer panic(err)
+		}
 
 		duration := time.Since(start)
 
@@ -252,5 +257,6 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		if len(c.Errors) > 0 && stackTraceFormatted == nil {
 			processGinErrors(c, txn, exceptionTags)
 		}
+
 	}
 }
