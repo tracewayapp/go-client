@@ -93,6 +93,7 @@ type TracewayGinOptions struct {
 	repanic          bool
 	recordUnmatched  bool
 	recordStatic     bool
+	ignoredPaths     map[string]struct{}
 	onErrorRecording RecordingFlag
 }
 
@@ -105,6 +106,17 @@ func WithRecordUnmatched(val bool) func(*TracewayGinOptions) {
 func WithRecordStatic(val bool) func(*TracewayGinOptions) {
 	return func(s *TracewayGinOptions) {
 		s.recordStatic = val
+	}
+}
+
+func WithIgnoredPaths(paths ...string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		if s.ignoredPaths == nil {
+			s.ignoredPaths = make(map[string]struct{}, len(paths))
+		}
+		for _, p := range paths {
+			s.ignoredPaths[p] = struct{}{}
+		}
 	}
 }
 
@@ -184,6 +196,13 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		if !opts.recordStatic && isStaticRoute(c) {
 			c.Next()
 			return
+		}
+
+		if len(opts.ignoredPaths) > 0 {
+			if _, ignored := opts.ignoredPaths[routePath]; ignored {
+				c.Next()
+				return
+			}
 		}
 
 		start := time.Now()
