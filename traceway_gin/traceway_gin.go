@@ -225,7 +225,8 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
 
 		if err != nil {
-			defer panic(err)
+			errForPanic := err
+			defer panic(errForPanic)
 		}
 
 		duration := time.Since(start)
