@@ -93,15 +93,15 @@ type TwStmt struct {
 	queryStr string
 }
 
-func (tws *TwStmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
-	return tws.Stmt.ExecContext(ctx, args...)
-}
 func (tws *TwStmt) Exec(args ...any) (sql.Result, error) {
 	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
 	defer seg.End()
 	return tws.Stmt.Exec(args...)
+}
+func (tws *TwStmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
+	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
+	defer seg.End()
+	return tws.Stmt.ExecContext(ctx, args...)
 }
 func (tws *TwStmt) QueryContext(ctx context.Context, args ...any) (*sql.Rows, error) {
 	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
@@ -127,6 +127,10 @@ func (tws *TwStmt) QueryRow(args ...any) *sql.Row {
 type TwTx struct {
 	*sql.Tx
 	ctx context.Context
+}
+
+func NewTwTx(ctx context.Context, tx *sql.Tx) *TwTx {
+	return &TwTx{tx, ctx}
 }
 
 func (twtx *TwTx) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
