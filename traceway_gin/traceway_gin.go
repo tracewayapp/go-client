@@ -92,12 +92,19 @@ type TracewayGinOptions struct {
 	tracewayOpts     []func(*traceway.TracewayOptions)
 	repanic          bool
 	recordUnmatched  bool
+	recordStatic     bool
 	onErrorRecording RecordingFlag
 }
 
 func WithRecordUnmatched(val bool) func(*TracewayGinOptions) {
 	return func(s *TracewayGinOptions) {
 		s.recordUnmatched = val
+	}
+}
+
+func WithRecordStatic(val bool) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.recordStatic = val
 	}
 }
 
@@ -148,6 +155,12 @@ func WithServerName(val string) func(*TracewayGinOptions) {
 	}
 }
 
+func isStaticRoute(c *gin.Context) bool {
+	handlerName := c.HandlerName()
+	return strings.Contains(handlerName, "StaticFile") ||
+		strings.Contains(handlerName, "createStaticHandler")
+}
+
 func New(connectionString string, options ...func(*TracewayGinOptions)) gin.HandlerFunc {
 	opts := &TracewayGinOptions{repanic: true, recordUnmatched: false, onErrorRecording: 0}
 	for _, o := range options {
@@ -166,6 +179,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			}
 			// we'll fallback to the actual path
 			routePath = c.Request.URL.Path
+		}
+
+		if !opts.recordStatic && isStaticRoute(c) {
+			c.Next()
+			return
 		}
 
 		start := time.Now()
