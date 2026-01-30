@@ -63,7 +63,7 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
 				case error:
 					errFromRecover = v
 				default:
-					errFromRecover = fmt.Errorf("traceway repanic: %w", v)
+					errFromRecover = fmt.Errorf("traceway repanic: %v", v)
 				}
 
 				e = errFromRecover
