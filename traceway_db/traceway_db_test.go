@@ -11,16 +11,16 @@ import (
 	traceway "go.tracewayapp.com"
 )
 
-// Helper function to setup TwDB with transaction context
-func setupTwDBWithTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, *traceway.TransactionContext, func()) {
+// Helper function to setup TwDB with trace context
+func setupTwDBWithTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, *traceway.TraceContext, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 	twdb := NewTwDB(ctx, db)
 
 	cleanup := func() {
@@ -29,7 +29,7 @@ func setupTwDBWithTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, *traceway.Transacti
 	return twdb, mock, txn, cleanup
 }
 
-// Helper function to setup TwDB without transaction context
+// Helper function to setup TwDB without trace context
 func setupTwDBWithoutTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
@@ -46,7 +46,7 @@ func setupTwDBWithoutTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, func()) {
 }
 
 // Helper function to assert a segment was created with expected name
-func assertSegmentCreated(t *testing.T, txn *traceway.TransactionContext, expectedName string) {
+func assertSegmentCreated(t *testing.T, txn *traceway.TraceContext, expectedName string) {
 	t.Helper()
 	segments := txn.GetSegments()
 	if len(segments) == 0 {
@@ -63,7 +63,7 @@ func assertSegmentCreated(t *testing.T, txn *traceway.TransactionContext, expect
 }
 
 // Helper function to get segment count
-func getSegmentCount(txn *traceway.TransactionContext) int {
+func getSegmentCount(txn *traceway.TraceContext) int {
 	return len(txn.GetSegments())
 }
 
@@ -188,7 +188,7 @@ func TestTwDB_ExecContext_NoTxnContext(t *testing.T) {
 		t.Errorf("expected lastInsertId 1, got %d", lastInsertId)
 	}
 
-	// Should work without transaction context (nil segment is safe)
+	// Should work without trace context (nil segment is safe)
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
 	}
@@ -429,15 +429,15 @@ func TestTwDB_BeginTx_Success(t *testing.T) {
 
 // ==================== TwStmt Tests ====================
 
-func setupTwStmt(t *testing.T) (*TwStmt, sqlmock.Sqlmock, *traceway.TransactionContext, func()) {
+func setupTwStmt(t *testing.T) (*TwStmt, sqlmock.Sqlmock, *traceway.TraceContext, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	query := "SELECT id FROM users WHERE id = ?"
 	mock.ExpectPrepare(quoteMeta(query))
@@ -580,15 +580,15 @@ func TestTwStmt_QueryRow_Success(t *testing.T) {
 
 // ==================== TwTx Tests ====================
 
-func setupTwTx(t *testing.T) (*TwTx, sqlmock.Sqlmock, *traceway.TransactionContext, func()) {
+func setupTwTx(t *testing.T) (*TwTx, sqlmock.Sqlmock, *traceway.TraceContext, func()) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create sqlmock: %v", err)
 	}
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	mock.ExpectBegin()
 	tx, err := db.Begin()
@@ -657,8 +657,8 @@ func TestTwTx_StmtContext_Success(t *testing.T) {
 	}
 	defer db.Close()
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	query := "SELECT id FROM users"
 	mock.ExpectPrepare(quoteMeta(query))
@@ -699,8 +699,8 @@ func TestTwTx_Stmt_Success(t *testing.T) {
 	}
 	defer db.Close()
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	query := "SELECT id FROM users"
 	mock.ExpectPrepare(quoteMeta(query))
@@ -878,7 +878,7 @@ func TestTwTx_QueryRow_Success(t *testing.T) {
 
 // ==================== TwConn Tests (using SQLite) ====================
 
-func setupTwConnWithSQLite(t *testing.T) (*TwConn, *sql.DB, *traceway.TransactionContext, func()) {
+func setupTwConnWithSQLite(t *testing.T) (*TwConn, *sql.DB, *traceway.TraceContext, func()) {
 	t.Helper()
 
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -892,8 +892,8 @@ func setupTwConnWithSQLite(t *testing.T) (*TwConn, *sql.DB, *traceway.Transactio
 		t.Fatalf("failed to create table: %v", err)
 	}
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	conn, err := db.Conn(context.Background())
 	if err != nil {
@@ -1058,7 +1058,7 @@ func TestTwConn_BeginTx_Success(t *testing.T) {
 
 // ==================== Additional Test Categories ====================
 
-// Test that methods work when no transaction is in context (nil segment is safe)
+// Test that methods work when no trace is in context (nil segment is safe)
 func TestNilContextSafety(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -1066,7 +1066,7 @@ func TestNilContextSafety(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create TwDB without transaction in context
+	// Create TwDB without trace in context
 	twdb := NewTwDB(context.Background(), db)
 
 	// All operations should succeed without panic
@@ -1157,12 +1157,12 @@ func TestContextPropagation(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Create two different transaction contexts
-	txnInternal := &traceway.TransactionContext{Id: "internal-txn"}
-	txnExternal := &traceway.TransactionContext{Id: "external-txn"}
+	// Create two different trace contexts
+	txnInternal := &traceway.TraceContext{Id: "internal-txn"}
+	txnExternal := &traceway.TraceContext{Id: "external-txn"}
 
-	ctxInternal := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txnInternal)
-	ctxExternal := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txnExternal)
+	ctxInternal := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txnInternal)
+	ctxExternal := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txnExternal)
 
 	// Create TwDB with internal context
 	twdb := NewTwDB(ctxInternal, db)
@@ -1178,7 +1178,7 @@ func TestContextPropagation(t *testing.T) {
 	}
 	result.Close()
 
-	// Segment should be created in internal transaction context, not external
+	// Segment should be created in internal trace context, not external
 	internalSegments := txnInternal.GetSegments()
 	externalSegments := txnExternal.GetSegments()
 
@@ -1228,8 +1228,8 @@ func TestTwDB_Conn_Error(t *testing.T) {
 	}
 	defer db.Close()
 
-	txn := &traceway.TransactionContext{Id: "test-txn-id"}
-	ctx := context.WithValue(context.Background(), string(traceway.CtxTransactionKey), txn)
+	txn := &traceway.TraceContext{Id: "test-trace-id"}
+	ctx := context.WithValue(context.Background(), string(traceway.CtxTraceKey), txn)
 
 	twdb := NewTwDB(ctx, db)
 

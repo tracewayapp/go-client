@@ -35,7 +35,7 @@ func formatErrorChain(err error) string {
 	return sb.String()
 }
 
-func processGinErrors(c *gin.Context, txn *traceway.TransactionContext, exceptionTags map[string]string) {
+func processGinErrors(c *gin.Context, tc *traceway.TraceContext, exceptionTags map[string]string) {
 	for _, ginErr := range c.Errors {
 		err := ginErr.Err
 		embeddedStack := extractStackFromError(err)
@@ -47,7 +47,7 @@ func processGinErrors(c *gin.Context, txn *traceway.TransactionContext, exceptio
 			formatted = formatErrorChain(err)
 		}
 
-		traceway.CaptureTransactionExceptionWithScope(txn.Id, formatted, exceptionTags)
+		traceway.CaptureTraceExceptionWithScope(tc.Id, formatted, exceptionTags)
 	}
 }
 
@@ -210,17 +210,17 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		method := c.Request.Method
 		clientIP := c.ClientIP()
 
-		txn := &traceway.TransactionContext{
+		tc := &traceway.TraceContext{
 			Id: uuid.NewString(),
 		}
 
 		scope := traceway.NewScope()
 
 		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxScopeKey), scope)
-		ctx = context.WithValue(ctx, string(traceway.CtxTransactionKey), txn)
+		ctx = context.WithValue(ctx, string(traceway.CtxTraceKey), tc)
 		c.Request = c.Request.WithContext(ctx)
 		c.Set(string(traceway.CtxScopeKey), scope)
-		c.Set(string(traceway.CtxTransactionKey), txn)
+		c.Set(string(traceway.CtxTraceKey), tc)
 
 		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
 
@@ -238,11 +238,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			bodySize = 0
 		}
 
-		transactionEndpoint := method + " " + routePath
+		traceEndpoint := method + " " + routePath
 
 		defer recover()
 
-		traceway.CaptureTransactionWithScope(txn, transactionEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
+		traceway.CaptureTraceWithScope(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
 		exceptionTags := map[string]string{}
 
@@ -289,11 +289,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		}
 
 		if stackTraceFormatted != nil {
-			traceway.CaptureTransactionExceptionWithScope(txn.Id, *stackTraceFormatted, exceptionTags)
+			traceway.CaptureTraceExceptionWithScope(tc.Id, *stackTraceFormatted, exceptionTags)
 		}
 
 		if len(c.Errors) > 0 && stackTraceFormatted == nil {
-			processGinErrors(c, txn, exceptionTags)
+			processGinErrors(c, tc, exceptionTags)
 		}
 
 	}
