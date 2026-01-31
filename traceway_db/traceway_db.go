@@ -18,40 +18,40 @@ func NewTwDB(ctx context.Context, db *sql.DB) *TwDB {
 	return &TwDB{db, ctx}
 }
 
-// Functions to override for segments/spans
+// Functions to override for spans
 func (twdb *TwDB) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.PrepareContext(ctx, query)
 }
 func (twdb *TwDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.ExecContext(ctx, query, args...)
 }
 func (twdb *TwDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.QueryContext(ctx, query, args...)
 }
 func (twdb *TwDB) Exec(query string, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.Exec(query, args...)
 }
 func (twdb *TwDB) Query(query string, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.Query(query, args...)
 }
 func (twdb *TwDB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.QueryRowContext(ctx, query, args...)
 }
 func (twdb *TwDB) QueryRow(query string, args ...any) *sql.Row {
-	seg := traceway.StartSegment(twdb.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twdb.ctx, query)
+	defer span.End()
 	return twdb.DB.QueryRow(query, args...)
 }
 
@@ -94,33 +94,33 @@ type TwStmt struct {
 }
 
 func (tws *TwStmt) Exec(args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.Exec(args...)
 }
 func (tws *TwStmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.ExecContext(ctx, args...)
 }
 func (tws *TwStmt) QueryContext(ctx context.Context, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.QueryContext(ctx, args...)
 }
 func (tws *TwStmt) Query(args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.Query(args...)
 }
 func (tws *TwStmt) QueryRowContext(ctx context.Context, args ...any) *sql.Row {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.QueryRowContext(ctx, args...)
 }
 func (tws *TwStmt) QueryRow(args ...any) *sql.Row {
-	seg := traceway.StartSegment(tws.ctx, tws.queryStr)
-	defer seg.End()
+	span := traceway.StartSpan(tws.ctx, tws.queryStr)
+	defer span.End()
 	return tws.Stmt.QueryRow(args...)
 }
 
@@ -134,13 +134,13 @@ func NewTwTx(ctx context.Context, tx *sql.Tx) *TwTx {
 }
 
 func (twtx *TwTx) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.PrepareContext(ctx, query)
 }
 func (twtx *TwTx) Prepare(query string) (*sql.Stmt, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.Prepare(query)
 }
 func (twtx *TwTx) StmtContext(ctx context.Context, stmt *sql.Stmt) *TwStmt {
@@ -150,33 +150,33 @@ func (twtx *TwTx) Stmt(stmt *sql.Stmt) *TwStmt {
 	return &TwStmt{twtx.Tx.Stmt(stmt), twtx.ctx, "Unknown Query (stmt from stmt)"}
 }
 func (twtx *TwTx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.ExecContext(ctx, query, args...)
 }
 func (twtx *TwTx) Exec(query string, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.Exec(query, args...)
 }
 func (twtx *TwTx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.QueryContext(ctx, query, args...)
 }
 func (twtx *TwTx) Query(query string, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.Query(query, args...)
 }
 func (twtx *TwTx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.QueryRowContext(ctx, query, args...)
 }
 func (twtx *TwTx) QueryRow(query string, args ...any) *sql.Row {
-	seg := traceway.StartSegment(twtx.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twtx.ctx, query)
+	defer span.End()
 	return twtx.Tx.QueryRow(query, args...)
 }
 
@@ -186,28 +186,28 @@ type TwConn struct {
 }
 
 func (twc *TwConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	seg := traceway.StartSegment(twc.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twc.ctx, query)
+	defer span.End()
 	return twc.Conn.ExecContext(ctx, query, args...)
 }
 func (twc *TwConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	seg := traceway.StartSegment(twc.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twc.ctx, query)
+	defer span.End()
 	return twc.Conn.QueryContext(ctx, query, args...)
 }
 func (twc *TwConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	seg := traceway.StartSegment(twc.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twc.ctx, query)
+	defer span.End()
 	return twc.Conn.QueryRowContext(ctx, query, args...)
 }
 func (twc *TwConn) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
-	seg := traceway.StartSegment(twc.ctx, query)
-	defer seg.End()
+	span := traceway.StartSpan(twc.ctx, query)
+	defer span.End()
 	return twc.Conn.PrepareContext(ctx, query)
 }
 func (twc *TwConn) Raw(f func(driverConn any) error) (err error) {
-	seg := traceway.StartSegment(twc.ctx, "Raw Db Driver Interaction")
-	defer seg.End()
+	span := traceway.StartSpan(twc.ctx, "Raw Db Driver Interaction")
+	defer span.End()
 	return twc.Conn.Raw(f)
 }
 func (twc *TwConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*TwTx, error) {

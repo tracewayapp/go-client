@@ -97,26 +97,26 @@ func (s *Scope) Clear() {
 // Global default scope
 var defaultScope = NewScope()
 
-// TraceContext holds trace data including segments
+// TraceContext holds trace data including spans
 type TraceContext struct {
-	Id       string
-	IsTask   bool // indicates if this is a task trace
-	Segments []Segment
-	mu       sync.Mutex
+	Id     string
+	IsTask bool // indicates if this is a task trace
+	Spans  []Span
+	mu     sync.Mutex
 }
 
-// AddSegment adds a segment to the trace context
-func (t *TraceContext) AddSegment(seg Segment) {
+// AddSpan adds a span to the trace context
+func (t *TraceContext) AddSpan(span Span) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.Segments = append(t.Segments, seg)
+	t.Spans = append(t.Spans, span)
 }
 
-// GetSegments returns a copy of segments
-func (t *TraceContext) GetSegments() []Segment {
+// GetSpans returns a copy of spans
+func (t *TraceContext) GetSpans() []Span {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.Segments
+	return t.Spans
 }
 
 // ConfigureScope modifies the global default scope (persistent changes)
@@ -290,29 +290,29 @@ type Trace struct {
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
 	Scope      map[string]string `json:"scope,omitempty"`
-	Segments   []Segment         `json:"segments,omitempty"`
+	Spans      []Span            `json:"spans,omitempty"`
 	IsTask     bool              `json:"isTask,omitempty"`
 }
 
-// Segment represents a timed slice within a trace
-type Segment struct {
+// Span represents a timed slice within a trace
+type Span struct {
 	Id        string        `json:"id"`
 	Name      string        `json:"name"`
 	StartTime time.Time     `json:"startTime"`
 	Duration  time.Duration `json:"duration"`
 }
 
-// ActiveSegment is a running segment that can be ended
-type ActiveSegment struct {
-	segment   Segment
+// ActiveSpan is a running span that can be ended
+type ActiveSpan struct {
+	span      Span
 	trace     *TraceContext
 	startedAt time.Time
 	ended     bool
 	mu        sync.Mutex
 }
 
-// End completes the segment and records its duration
-func (s *ActiveSegment) End() {
+// End completes the span and records its duration
+func (s *ActiveSpan) End() {
 	if s == nil || s.trace == nil {
 		return
 	}
@@ -324,8 +324,8 @@ func (s *ActiveSegment) End() {
 	}
 
 	s.ended = true
-	s.segment.Duration = time.Since(s.startedAt)
-	s.trace.AddSegment(s.segment)
+	s.span.Duration = time.Since(s.startedAt)
+	s.trace.AddSpan(s.span)
 }
 
 type CollectionFrame struct {
@@ -752,7 +752,7 @@ func CaptureTraceWithScope(
 			BodySize:   bodySize,
 			ClientIP:   clientIP,
 			Scope:      scope,
-			Segments:   tc.GetSegments(),
+			Spans:      tc.GetSpans(),
 		},
 	}
 }
@@ -782,7 +782,7 @@ func CaptureTask(
 			BodySize:   0,
 			ClientIP:   "",
 			Scope:      scope,
-			Segments:   tc.GetSegments(),
+			Spans:      tc.GetSpans(),
 			IsTask:     true,
 		},
 	}
@@ -813,14 +813,14 @@ func CaptureTaskExceptionWithScope(traceId string, stacktrace string, scope map[
 	}
 }
 
-func StartSegmentByTraceId(ctx context.Context, name string) *ActiveSegment {
+func StartSpanByTraceId(ctx context.Context, name string) *ActiveSpan {
 	tc := GetTraceFromContext(ctx)
 	if tc == nil {
 		return nil
 	}
 	now := time.Now()
-	return &ActiveSegment{
-		segment: Segment{
+	return &ActiveSpan{
+		span: Span{
 			Id:        uuid.NewString(),
 			Name:      name,
 			StartTime: now,
@@ -830,15 +830,15 @@ func StartSegmentByTraceId(ctx context.Context, name string) *ActiveSegment {
 	}
 }
 
-// StartSegment starts a segment using trace ID from context
-func StartSegment(ctx context.Context, name string) *ActiveSegment {
+// StartSpan starts a span using trace ID from context
+func StartSpan(ctx context.Context, name string) *ActiveSpan {
 	tc := GetTraceFromContext(ctx)
 	if tc == nil {
 		return nil
 	}
 	now := time.Now()
-	return &ActiveSegment{
-		segment: Segment{
+	return &ActiveSpan{
+		span: Span{
 			Id:        uuid.NewString(),
 			Name:      name,
 			StartTime: now,

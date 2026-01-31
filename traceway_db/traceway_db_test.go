@@ -45,26 +45,26 @@ func setupTwDBWithoutTxn(t *testing.T) (*TwDB, sqlmock.Sqlmock, func()) {
 	return twdb, mock, cleanup
 }
 
-// Helper function to assert a segment was created with expected name
-func assertSegmentCreated(t *testing.T, txn *traceway.TraceContext, expectedName string) {
+// Helper function to assert a span was created with expected name
+func assertSpanCreated(t *testing.T, txn *traceway.TraceContext, expectedName string) {
 	t.Helper()
-	segments := txn.GetSegments()
-	if len(segments) == 0 {
-		t.Fatalf("expected at least one segment, got none")
+	spans := txn.GetSpans()
+	if len(spans) == 0 {
+		t.Fatalf("expected at least one span, got none")
 	}
 
-	lastSegment := segments[len(segments)-1]
-	if lastSegment.Name != expectedName {
-		t.Errorf("expected segment name %q, got %q", expectedName, lastSegment.Name)
+	lastSpan := spans[len(spans)-1]
+	if lastSpan.Name != expectedName {
+		t.Errorf("expected span name %q, got %q", expectedName, lastSpan.Name)
 	}
-	if lastSegment.Duration <= 0 {
-		t.Errorf("expected positive duration, got %v", lastSegment.Duration)
+	if lastSpan.Duration <= 0 {
+		t.Errorf("expected positive duration, got %v", lastSpan.Duration)
 	}
 }
 
-// Helper function to get segment count
-func getSegmentCount(txn *traceway.TraceContext) int {
-	return len(txn.GetSegments())
+// Helper function to get span count
+func getSpanCount(txn *traceway.TraceContext) int {
+	return len(txn.GetSpans())
 }
 
 // Helper to quote regex special characters for sqlmock
@@ -108,7 +108,7 @@ func TestTwDB_PrepareContext_Success(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -127,8 +127,8 @@ func TestTwDB_PrepareContext_Error(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Segment should still be created even on error
-	assertSegmentCreated(t, txn, query)
+	// Span should still be created even on error
+	assertSpanCreated(t, txn, query)
 }
 
 func TestTwDB_ExecContext_Success(t *testing.T) {
@@ -148,7 +148,7 @@ func TestTwDB_ExecContext_Success(t *testing.T) {
 		t.Errorf("expected lastInsertId 1, got %d", lastInsertId)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -167,8 +167,8 @@ func TestTwDB_ExecContext_Error(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Segment should still be created even on error
-	assertSegmentCreated(t, txn, query)
+	// Span should still be created even on error
+	assertSpanCreated(t, txn, query)
 }
 
 func TestTwDB_ExecContext_NoTxnContext(t *testing.T) {
@@ -188,7 +188,7 @@ func TestTwDB_ExecContext_NoTxnContext(t *testing.T) {
 		t.Errorf("expected lastInsertId 1, got %d", lastInsertId)
 	}
 
-	// Should work without trace context (nil segment is safe)
+	// Should work without trace context (nil span is safe)
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestTwDB_Exec_Success(t *testing.T) {
 		t.Errorf("expected rowsAffected 1, got %d", rowsAffected)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -240,7 +240,7 @@ func TestTwDB_QueryContext_Success(t *testing.T) {
 		t.Errorf("expected 2 rows, got %d", count)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -259,8 +259,8 @@ func TestTwDB_QueryContext_Error(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Segment should still be created even on error
-	assertSegmentCreated(t, txn, query)
+	// Span should still be created even on error
+	assertSpanCreated(t, txn, query)
 }
 
 func TestTwDB_Query_Success(t *testing.T) {
@@ -277,7 +277,7 @@ func TestTwDB_Query_Success(t *testing.T) {
 	}
 	defer result.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -303,7 +303,7 @@ func TestTwDB_QueryRowContext_Success(t *testing.T) {
 		t.Errorf("expected name 'alice', got %q", name)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -329,7 +329,7 @@ func TestTwDB_QueryRow_Success(t *testing.T) {
 		t.Errorf("expected count 42, got %d", count)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -352,7 +352,7 @@ func TestTwDB_Prepare_Success(t *testing.T) {
 	}
 	defer twstmt.Close()
 
-	// Prepare does NOT create a segment
+	// Prepare does NOT create a span
 	if twstmt.queryStr != query {
 		t.Errorf("expected queryStr %q, got %q", query, twstmt.queryStr)
 	}
@@ -389,7 +389,7 @@ func TestTwDB_Begin_Success(t *testing.T) {
 		t.Fatal("expected non-nil TwTx")
 	}
 
-	// Begin does NOT create a segment
+	// Begin does NOT create a span
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestTwDB_BeginTx_Success(t *testing.T) {
 		t.Fatal("expected non-nil TwTx")
 	}
 
-	// BeginTx does NOT create a segment
+	// BeginTx does NOT create a span
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestTwStmt_ExecContext_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -485,7 +485,7 @@ func TestTwStmt_Exec_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -505,7 +505,7 @@ func TestTwStmt_QueryContext_Success(t *testing.T) {
 	}
 	defer result.Close()
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -525,7 +525,7 @@ func TestTwStmt_Query_Success(t *testing.T) {
 	}
 	defer result.Close()
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -548,7 +548,7 @@ func TestTwStmt_QueryRowContext_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -571,7 +571,7 @@ func TestTwStmt_QueryRow_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, twstmt.queryStr)
+	assertSpanCreated(t, txn, twstmt.queryStr)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -620,7 +620,7 @@ func TestTwTx_PrepareContext_Success(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -643,7 +643,7 @@ func TestTwTx_Prepare_Success(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -681,7 +681,7 @@ func TestTwTx_StmtContext_Success(t *testing.T) {
 		t.Fatal("expected non-nil TwStmt")
 	}
 
-	// StmtContext does NOT create a segment, but returns TwStmt with unknown query string
+	// StmtContext does NOT create a span, but returns TwStmt with unknown query string
 	expectedQueryStr := "Unknown Query (stmt from stmt)"
 	if twstmt.queryStr != expectedQueryStr {
 		t.Errorf("expected queryStr %q, got %q", expectedQueryStr, twstmt.queryStr)
@@ -723,7 +723,7 @@ func TestTwTx_Stmt_Success(t *testing.T) {
 		t.Fatal("expected non-nil TwStmt")
 	}
 
-	// Stmt does NOT create a segment, but returns TwStmt with unknown query string
+	// Stmt does NOT create a span, but returns TwStmt with unknown query string
 	expectedQueryStr := "Unknown Query (stmt from stmt)"
 	if twstmt.queryStr != expectedQueryStr {
 		t.Errorf("expected queryStr %q, got %q", expectedQueryStr, twstmt.queryStr)
@@ -751,7 +751,7 @@ func TestTwTx_ExecContext_Success(t *testing.T) {
 		t.Errorf("expected lastInsertId 1, got %d", lastInsertId)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -775,7 +775,7 @@ func TestTwTx_Exec_Success(t *testing.T) {
 		t.Errorf("expected rowsAffected 5, got %d", rowsAffected)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -796,7 +796,7 @@ func TestTwTx_QueryContext_Success(t *testing.T) {
 	}
 	defer result.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -817,7 +817,7 @@ func TestTwTx_Query_Success(t *testing.T) {
 	}
 	defer result.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -843,7 +843,7 @@ func TestTwTx_QueryRowContext_Success(t *testing.T) {
 		t.Errorf("expected name 'bob', got %q", name)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -869,7 +869,7 @@ func TestTwTx_QueryRow_Success(t *testing.T) {
 		t.Errorf("expected count 100, got %d", count)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)
@@ -924,7 +924,7 @@ func TestTwConn_ExecContext_Success(t *testing.T) {
 		t.Errorf("expected rowsAffected 1, got %d", rowsAffected)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 }
 
 func TestTwConn_QueryContext_Success(t *testing.T) {
@@ -937,7 +937,7 @@ func TestTwConn_QueryContext_Success(t *testing.T) {
 		t.Fatalf("failed to insert test data: %v", err)
 	}
 
-	initialSegmentCount := getSegmentCount(txn)
+	initialSpanCount := getSpanCount(txn)
 
 	query := "SELECT id, name FROM users"
 	rows, err := twconn.QueryContext(context.Background(), query)
@@ -954,15 +954,15 @@ func TestTwConn_QueryContext_Success(t *testing.T) {
 		t.Errorf("expected 1 row, got %d", count)
 	}
 
-	// Check that a new segment was created
-	if getSegmentCount(txn) != initialSegmentCount+1 {
-		t.Error("expected one new segment to be created")
+	// Check that a new span was created
+	if getSpanCount(txn) != initialSpanCount+1 {
+		t.Error("expected one new span to be created")
 	}
 
-	segments := txn.GetSegments()
-	lastSegment := segments[len(segments)-1]
-	if lastSegment.Name != query {
-		t.Errorf("expected segment name %q, got %q", query, lastSegment.Name)
+	spans := txn.GetSpans()
+	lastSpan := spans[len(spans)-1]
+	if lastSpan.Name != query {
+		t.Errorf("expected span name %q, got %q", query, lastSpan.Name)
 	}
 }
 
@@ -976,7 +976,7 @@ func TestTwConn_QueryRowContext_Success(t *testing.T) {
 		t.Fatalf("failed to insert test data: %v", err)
 	}
 
-	initialSegmentCount := getSegmentCount(txn)
+	initialSpanCount := getSpanCount(txn)
 
 	query := "SELECT name FROM users WHERE id = ?"
 	row := twconn.QueryRowContext(context.Background(), query, 1)
@@ -990,15 +990,15 @@ func TestTwConn_QueryRowContext_Success(t *testing.T) {
 		t.Errorf("expected name 'bob', got %q", name)
 	}
 
-	// Check that a new segment was created
-	if getSegmentCount(txn) != initialSegmentCount+1 {
-		t.Error("expected one new segment to be created")
+	// Check that a new span was created
+	if getSpanCount(txn) != initialSpanCount+1 {
+		t.Error("expected one new span to be created")
 	}
 
-	segments := txn.GetSegments()
-	lastSegment := segments[len(segments)-1]
-	if lastSegment.Name != query {
-		t.Errorf("expected segment name %q, got %q", query, lastSegment.Name)
+	spans := txn.GetSpans()
+	lastSpan := spans[len(spans)-1]
+	if lastSpan.Name != query {
+		t.Errorf("expected span name %q, got %q", query, lastSpan.Name)
 	}
 }
 
@@ -1013,7 +1013,7 @@ func TestTwConn_PrepareContext_Success(t *testing.T) {
 	}
 	defer stmt.Close()
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 }
 
 func TestTwConn_Raw_Success(t *testing.T) {
@@ -1031,7 +1031,7 @@ func TestTwConn_Raw_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, "Raw Db Driver Interaction")
+	assertSpanCreated(t, txn, "Raw Db Driver Interaction")
 }
 
 func TestTwConn_BeginTx_Success(t *testing.T) {
@@ -1046,7 +1046,7 @@ func TestTwConn_BeginTx_Success(t *testing.T) {
 		t.Fatal("expected non-nil TwTx")
 	}
 
-	// BeginTx does NOT create a segment
+	// BeginTx does NOT create a span
 	// Just verify it returns a valid TwTx
 	if twtx.Tx == nil {
 		t.Error("expected non-nil underlying Tx")
@@ -1058,7 +1058,7 @@ func TestTwConn_BeginTx_Success(t *testing.T) {
 
 // ==================== Additional Test Categories ====================
 
-// Test that methods work when no trace is in context (nil segment is safe)
+// Test that methods work when no trace is in context (nil span is safe)
 func TestNilContextSafety(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -1092,8 +1092,8 @@ func TestNilContextSafety(t *testing.T) {
 	}
 }
 
-// Test that multiple operations create multiple segments
-func TestMultipleOperationsCreateMultipleSegments(t *testing.T) {
+// Test that multiple operations create multiple spans
+func TestMultipleOperationsCreateMultipleSpans(t *testing.T) {
 	twdb, mock, txn, cleanup := setupTwDBWithTxn(t)
 	defer cleanup()
 
@@ -1128,20 +1128,20 @@ func TestMultipleOperationsCreateMultipleSegments(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	segments := txn.GetSegments()
-	if len(segments) != 3 {
-		t.Errorf("expected 3 segments, got %d", len(segments))
+	spans := txn.GetSpans()
+	if len(spans) != 3 {
+		t.Errorf("expected 3 spans, got %d", len(spans))
 	}
 
-	// Verify segment names
-	if segments[0].Name != query1 {
-		t.Errorf("expected first segment name %q, got %q", query1, segments[0].Name)
+	// Verify span names
+	if spans[0].Name != query1 {
+		t.Errorf("expected first span name %q, got %q", query1, spans[0].Name)
 	}
-	if segments[1].Name != query2 {
-		t.Errorf("expected second segment name %q, got %q", query2, segments[1].Name)
+	if spans[1].Name != query2 {
+		t.Errorf("expected second span name %q, got %q", query2, spans[1].Name)
 	}
-	if segments[2].Name != query3 {
-		t.Errorf("expected third segment name %q, got %q", query3, segments[2].Name)
+	if spans[2].Name != query3 {
+		t.Errorf("expected third span name %q, got %q", query3, spans[2].Name)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -1149,7 +1149,7 @@ func TestMultipleOperationsCreateMultipleSegments(t *testing.T) {
 	}
 }
 
-// Test context propagation: wrapper uses internal ctx for segments, not passed ctx
+// Test context propagation: wrapper uses internal ctx for spans, not passed ctx
 func TestContextPropagation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -1178,15 +1178,15 @@ func TestContextPropagation(t *testing.T) {
 	}
 	result.Close()
 
-	// Segment should be created in internal trace context, not external
-	internalSegments := txnInternal.GetSegments()
-	externalSegments := txnExternal.GetSegments()
+	// Span should be created in internal trace context, not external
+	internalSpans := txnInternal.GetSpans()
+	externalSpans := txnExternal.GetSpans()
 
-	if len(internalSegments) != 1 {
-		t.Errorf("expected 1 segment in internal context, got %d", len(internalSegments))
+	if len(internalSpans) != 1 {
+		t.Errorf("expected 1 span in internal context, got %d", len(internalSpans))
 	}
-	if len(externalSegments) != 0 {
-		t.Errorf("expected 0 segments in external context, got %d", len(externalSegments))
+	if len(externalSpans) != 0 {
+		t.Errorf("expected 0 spans in external context, got %d", len(externalSpans))
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -1210,14 +1210,14 @@ func TestTwDB_Conn_Success(t *testing.T) {
 		t.Error("expected non-nil underlying Conn")
 	}
 
-	// Test that operations create segments
+	// Test that operations create spans
 	query := "INSERT INTO users (name) VALUES (?)"
 	_, err := twconn.ExecContext(context.Background(), query, "test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertSegmentCreated(t, txn, query)
+	assertSpanCreated(t, txn, query)
 }
 
 // Test TwDB.Conn error handling
