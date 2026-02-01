@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/google/uuid v1.6.0
-	go.tracewayapp.com v0.3.3
+	go.tracewayapp.com v0.4.1
 )
 
 require (
@@ -41,5 +41,3 @@ require (
 	golang.org/x/tools v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 )
-
-replace go.tracewayapp.com => ../
