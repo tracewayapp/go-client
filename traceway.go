@@ -21,7 +21,6 @@ import (
 	"go.tracewayapp.com/metrics/cpu"
 	"go.tracewayapp.com/metrics/mem"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
@@ -127,15 +126,6 @@ func GetAttributesFromContext(ctx context.Context) *Attributes {
 	}
 
 	return defaultAttributes.Clone()
-}
-
-func GetAttributesFromGin(c *gin.Context) *Attributes {
-	if attributes, ok := c.Get(string(CtxAttributesKey)); ok {
-		if s, ok := attributes.(*Attributes); ok {
-			return s
-		}
-	}
-	return GetAttributesFromContext(c.Request.Context())
 }
 
 func GetTraceFromContext(ctx context.Context) *TraceContext {
@@ -318,7 +308,7 @@ type collectionFrameMessageType int
 const (
 	CollectionFrameMessageTypeException   = 0
 	CollectionFrameMessageTypeMetric      = 1
-	CollectionFrameMessageTypeTrace = 2
+	CollectionFrameMessageTypeTrace       = 2
 	CollectionFrameMessageTypeClearFrames = 3
 )
 
@@ -516,7 +506,7 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 		}
 	}()
 
-	jsonData, err := json.Marshal(gin.H{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"collectionFrames": framesToSend,
 		"appVersion":       s.version,
 		"serverName":       s.serverName,
