@@ -47,7 +47,7 @@ func processGinErrors(c *gin.Context, tc *traceway.TraceContext, exceptionTags m
 			formatted = formatErrorChain(err)
 		}
 
-		traceway.CaptureTraceExceptionWithScope(tc.Id, formatted, exceptionTags)
+		traceway.CaptureTraceExceptionWithAttributes(tc.Id, formatted, exceptionTags)
 	}
 }
 
@@ -68,7 +68,6 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
 
 				e = errFromRecover
 			} else {
-				// we don't propagate just report
 				c.AbortWithStatus(http.StatusInternalServerError)
 			}
 		}
@@ -80,10 +79,10 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
 type RecordingFlag byte
 
 const (
-	RecordingUrl    RecordingFlag = 1 << iota // 0b0001
-	RecordingQuery                            // 0b0010
-	RecordingBody                             // 0b0100
-	RecordingHeader                           // 0b1000
+	RecordingUrl    RecordingFlag = 1 << iota
+	RecordingQuery
+	RecordingBody
+	RecordingHeader
 )
 
 const bodyLimitForReporting = int64(64 * 1024)
@@ -195,11 +194,9 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		routePath := c.FullPath()
 		if routePath == "" {
 			if !opts.recordUnmatched {
-				// unmatched routes are not recorded based on config
 				c.Next()
 				return
 			}
-			// we'll fallback to the actual path
 			routePath = c.Request.URL.Path
 		}
 
@@ -224,12 +221,12 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			Id: uuid.NewString(),
 		}
 
-		scope := traceway.NewScope()
+		attributes := traceway.NewAttributes()
 
-		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxScopeKey), scope)
+		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxAttributesKey), attributes)
 		ctx = context.WithValue(ctx, string(traceway.CtxTraceKey), tc)
 		c.Request = c.Request.WithContext(ctx)
-		c.Set(string(traceway.CtxScopeKey), scope)
+		c.Set(string(traceway.CtxAttributesKey), attributes)
 		c.Set(string(traceway.CtxTraceKey), tc)
 
 		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
@@ -257,20 +254,20 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			return
 		}
 
-		traceway.CaptureTraceWithScope(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
+		traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, attributes.GetTags())
 
 		exceptionTags := map[string]string{}
 
 		hasGinContextError := len(c.Errors) > 0 && stackTraceFormatted == nil
 
 		if stackTraceFormatted != nil || hasGinContextError {
-			for k, v := range scope.GetTags() {
-				if k != "User-Agent" { // we add user-agent as a separate tag
+			for k, v := range attributes.GetTags() {
+				if k != "User-Agent" {
 					exceptionTags[k] = v
 				}
 			}
 
-			exceptionTags["user agent"] = c.Request.UserAgent() // we'll only store the user agent IF an exception happens
+			exceptionTags["user agent"] = c.Request.UserAgent()
 
 			if opts.onErrorRecording&RecordingUrl > 0 {
 				exceptionTags["url"] = c.Request.URL.Path
@@ -287,10 +284,9 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 				limitedBody, err := io.ReadAll(io.LimitReader(c.Request.Body, bodyLimitForReporting))
 
 				if err == nil {
-					// restore what we read + whatever remains unread
 					c.Request.Body = io.NopCloser(io.MultiReader(
 						bytes.NewBuffer(limitedBody),
-						c.Request.Body, // the rest of the body
+						c.Request.Body,
 					))
 
 					exceptionTags["body"] = string(limitedBody)
@@ -304,7 +300,7 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		}
 
 		if stackTraceFormatted != nil {
-			traceway.CaptureTraceExceptionWithScope(tc.Id, *stackTraceFormatted, exceptionTags)
+			traceway.CaptureTraceExceptionWithAttributes(tc.Id, *stackTraceFormatted, exceptionTags)
 		}
 
 		if len(c.Errors) > 0 && stackTraceFormatted == nil {

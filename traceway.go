@@ -25,31 +25,27 @@ import (
 	"github.com/google/uuid"
 )
 
-// Context key for scope
 type tracewayContextKey string
 
-const CtxScopeKey tracewayContextKey = "TRACEWAY_SCOPE"
+const CtxAttributesKey tracewayContextKey = "TRACEWAY_ATTRIBUTES"
 const CtxTraceKey tracewayContextKey = "TRACEWAY_TRACE"
 
-// Scope holds contextual data for exceptions and traces
-type Scope struct {
+type Attributes struct {
 	tags map[string]string
 	mu   sync.RWMutex
 }
 
-// NewScope creates a new empty scope
-func NewScope() *Scope {
-	return &Scope{tags: make(map[string]string)}
+func NewAttributes() *Attributes {
+	return &Attributes{tags: make(map[string]string)}
 }
 
-// SetTag sets a tag on the scope
-func (s *Scope) SetTag(key, value string) {
+func (s *Attributes) SetTag(key, value string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tags[key] = value
 }
 
-func (s *Scope) SetTagJson(key string, value interface{}) error {
+func (s *Attributes) SetTagJson(key string, value interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -64,16 +60,14 @@ func (s *Scope) SetTagJson(key string, value interface{}) error {
 	return nil
 }
 
-// GetTag gets a tag from the scope
-func (s *Scope) GetTag(key string) (string, bool) {
+func (s *Attributes) GetTag(key string) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	val, ok := s.tags[key]
 	return val, ok
 }
 
-// GetTags returns a copy of all tags
-func (s *Scope) GetTags() map[string]string {
+func (s *Attributes) GetTags() map[string]string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := make(map[string]string, len(s.tags))
@@ -83,78 +77,67 @@ func (s *Scope) GetTags() map[string]string {
 	return result
 }
 
-// Clone creates a deep copy of the scope
-func (s *Scope) Clone() *Scope {
-	return &Scope{tags: s.GetTags()}
+func (s *Attributes) Clone() *Attributes {
+	return &Attributes{tags: s.GetTags()}
 }
 
-// Clear removes all tags from the scope
-func (s *Scope) Clear() {
+func (s *Attributes) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tags = make(map[string]string)
 }
 
-// Global default scope
-var defaultScope = NewScope()
+var defaultAttributes = NewAttributes()
 
-// TraceContext holds trace data including spans
 type TraceContext struct {
 	Id     string
-	IsTask bool // indicates if this is a task trace
+	IsTask bool
 	Spans  []Span
 	mu     sync.Mutex
 }
 
-// AddSpan adds a span to the trace context
 func (t *TraceContext) AddSpan(span Span) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Spans = append(t.Spans, span)
 }
 
-// GetSpans returns a copy of spans
 func (t *TraceContext) GetSpans() []Span {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.Spans
 }
 
-// ConfigureScope modifies the global default scope (persistent changes)
-func ConfigureScope(fn func(*Scope)) {
-	fn(defaultScope)
+func ConfigureAttributes(fn func(*Attributes)) {
+	fn(defaultAttributes)
 }
 
-// WithScope creates an isolated scope clone for the callback and returns a new context
-func WithScope(ctx context.Context, fn func(*Scope)) context.Context {
-	scope := GetScopeFromContext(ctx).Clone()
-	fn(scope)
-	return context.WithValue(ctx, CtxScopeKey, scope)
+func WithAttributes(ctx context.Context, fn func(*Attributes)) context.Context {
+	attributes := GetAttributesFromContext(ctx).Clone()
+	fn(attributes)
+	return context.WithValue(ctx, CtxAttributesKey, attributes)
 }
 
-// GetScopeFromContext retrieves scope from context, falls back to default clone
-func GetScopeFromContext(ctx context.Context) *Scope {
+func GetAttributesFromContext(ctx context.Context) *Attributes {
 	if ctx == nil {
-		return defaultScope.Clone()
+		return defaultAttributes.Clone()
 	}
-	if scope, ok := ctx.Value(string(CtxScopeKey)).(*Scope); ok && scope != nil {
-		return scope
+	if attributes, ok := ctx.Value(string(CtxAttributesKey)).(*Attributes); ok && attributes != nil {
+		return attributes
 	}
 
-	return defaultScope.Clone()
+	return defaultAttributes.Clone()
 }
 
-// GetScopeFromGin is a convenience helper for Gin handlers
-func GetScopeFromGin(c *gin.Context) *Scope {
-	if scope, ok := c.Get(string(CtxScopeKey)); ok {
-		if s, ok := scope.(*Scope); ok {
+func GetAttributesFromGin(c *gin.Context) *Attributes {
+	if attributes, ok := c.Get(string(CtxAttributesKey)); ok {
+		if s, ok := attributes.(*Attributes); ok {
 			return s
 		}
 	}
-	return GetScopeFromContext(c.Request.Context())
+	return GetAttributesFromContext(c.Request.Context())
 }
 
-// GetTraceFromContext retrieves the trace context
 func GetTraceFromContext(ctx context.Context) *TraceContext {
 	if val, ok := ctx.Value(string(CtxTraceKey)).(*TraceContext); ok {
 		return val
@@ -182,10 +165,10 @@ func StartTrace(ctx context.Context) context.Context {
 		IsTask: false,
 	}
 
-	scope := GetScopeFromContext(ctx)
+	attributes := GetAttributesFromContext(ctx)
 
 	ctx = context.WithValue(ctx, CtxTraceKey, tc)
-	ctx = context.WithValue(ctx, CtxScopeKey, scope)
+	ctx = context.WithValue(ctx, CtxAttributesKey, attributes)
 
 	return ctx
 }
@@ -213,7 +196,6 @@ func CaptureStack(skip int) []runtime.Frame {
 	const maxDepth = 64
 	pcs := make([]uintptr, maxDepth)
 
-	// +2 skips runtime.Callers and CaptureStack
 	n := runtime.Callers(skip+2, pcs)
 	if n == 0 {
 		return nil
@@ -253,12 +235,11 @@ func FormatErrorWithStack(err error, frames []runtime.Frame) string {
 
 	for _, frame := range frames {
 		fn := frame.Function
-		// Extract just the function/method name
 		if idx := strings.LastIndex(fn, "/"); idx >= 0 {
 			fn = fn[idx+1:]
 		}
 		if idx := strings.Index(fn, "."); idx >= 0 {
-			fn = fn[idx+1:] // Remove package name, keep (*Type).Method
+			fn = fn[idx+1:]
 		}
 		fmt.Fprintf(&sb, "%s()\n", fn)
 		fmt.Fprintf(&sb, "    %s:%d\n", frame.File, frame.Line)
@@ -272,7 +253,7 @@ type ExceptionStackTrace struct {
 	IsTask     bool              `json:"isTask,omitempty"`
 	StackTrace string            `json:"stackTrace"`
 	RecordedAt time.Time         `json:"recordedAt"`
-	Scope      map[string]string `json:"scope,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 	IsMessage  bool              `json:"isMessage"`
 }
 
@@ -290,12 +271,11 @@ type Trace struct {
 	StatusCode int               `json:"statusCode"`
 	BodySize   int               `json:"bodySize"`
 	ClientIP   string            `json:"clientIP"`
-	Scope      map[string]string `json:"scope,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 	Spans      []Span            `json:"spans,omitempty"`
 	IsTask     bool              `json:"isTask,omitempty"`
 }
 
-// Span represents a timed slice within a trace
 type Span struct {
 	Id        string        `json:"id"`
 	Name      string        `json:"name"`
@@ -303,7 +283,6 @@ type Span struct {
 	Duration  time.Duration `json:"duration"`
 }
 
-// ActiveSpan is a running span that can be ended
 type ActiveSpan struct {
 	span      Span
 	trace     *TraceContext
@@ -312,7 +291,6 @@ type ActiveSpan struct {
 	mu        sync.Mutex
 }
 
-// End completes the span and records its duration
 func (s *ActiveSpan) End() {
 	if s == nil || s.trace == nil {
 		return
@@ -321,7 +299,7 @@ func (s *ActiveSpan) End() {
 	defer s.mu.Unlock()
 
 	if s.ended {
-		return // Already ended
+		return
 	}
 
 	s.ended = true
@@ -366,7 +344,6 @@ type CollectionFrameStore struct {
 
 	lastUploadStarted *time.Time
 
-	// Config fields
 	apiUrl              string
 	token               string
 	debug               bool
@@ -466,7 +443,6 @@ func (s *CollectionFrameStore) safeProcessMetrics() {
 
 	totalMem, err := mem.GetTotalMemory()
 	if err == nil && totalMem > 0 {
-		// Convert bytes to MB for total system memory
 		CaptureMetric(MetricNameMemoryTotal, float64(totalMem)/1024/1024)
 	} else {
 		if s.debug {
@@ -504,7 +480,6 @@ func (s *CollectionFrameStore) process() {
 			}
 
 			if s.current == nil {
-				// we need to start a new frame
 				s.current = &CollectionFrame{}
 				s.currentSetAt = time.Now()
 			}
@@ -525,7 +500,6 @@ func (s *CollectionFrameStore) rotateCurrentCollectionFrame() {
 	s.current = nil
 }
 func (s *CollectionFrameStore) processSendQueue() {
-	// we are triggering an upload - we need to make sure no other uploads are going on
 	if s.lastUploadStarted == nil || s.lastUploadStarted.Before(time.Now().Add(s.uploadTimeout)) {
 		now := time.Now()
 		s.lastUploadStarted = &now
@@ -533,7 +507,6 @@ func (s *CollectionFrameStore) processSendQueue() {
 	}
 }
 
-// Report adds an exception event to the current envelope
 func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 	defer func() {
 		if r := recover(); s.debug && r != nil {
@@ -563,7 +536,7 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 		}
 		return
 	}
-	if err := gz.Close(); err != nil { // Close flushes the compressed data
+	if err := gz.Close(); err != nil {
 		if s.debug {
 			log.Printf("Traceway: gz write failed: %v", err)
 		}
@@ -593,7 +566,6 @@ func (s *CollectionFrameStore) triggerUpload(framesToSend []*CollectionFrame) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 200 {
-		// we need to clear out the frames
 		s.messageQueue <- CollectionFrameMessage{
 			msgType:                  CollectionFrameMessageTypeClearFrames,
 			collectionFramesToRemove: framesToSend,
@@ -719,8 +691,6 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 	return nil
 }
 
-// ShouldSample returns true if this event should be captured based on sample rates.
-// When isError is true, ErrorSampleRate is used; otherwise SampleRate is used.
 func ShouldSample(isError bool) bool {
 	if collectionFrameStore == nil {
 		return false
@@ -752,7 +722,6 @@ func CaptureMetric(name string, value float64) {
 	}
 }
 
-// CaptureTrace captures a trace without scope (backward compatible)
 func CaptureTrace(
 	tc *TraceContext,
 	endpoint string,
@@ -764,18 +733,17 @@ func CaptureTrace(
 	if collectionFrameStore == nil {
 		return
 	}
-	CaptureTraceWithScope(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
+	CaptureTraceWithAttributes(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
 }
 
-// CaptureTraceWithScope captures a trace with scope
-func CaptureTraceWithScope(
+func CaptureTraceWithAttributes(
 	tc *TraceContext,
 	endpoint string,
 	d time.Duration,
 	startedAt time.Time,
 	statusCode, bodySize int,
 	clientIP string,
-	scope map[string]string,
+	attributes map[string]string,
 ) {
 	if collectionFrameStore == nil {
 		return
@@ -793,19 +761,18 @@ func CaptureTraceWithScope(
 			StatusCode: statusCode,
 			BodySize:   bodySize,
 			ClientIP:   clientIP,
-			Scope:      scope,
+			Attributes: attributes,
 			Spans:      tc.GetSpans(),
 		},
 	}
 }
 
-// CaptureTask captures a background task (without status code and body size)
 func CaptureTask(
 	tc *TraceContext,
 	taskName string,
 	d time.Duration,
 	startedAt time.Time,
-	scope map[string]string,
+	attributes map[string]string,
 ) {
 	if collectionFrameStore == nil {
 		return
@@ -817,29 +784,27 @@ func CaptureTask(
 		msgType: CollectionFrameMessageTypeTrace,
 		trace: &Trace{
 			Id:         tc.Id,
-			Endpoint:   taskName, // Task name is stored in Endpoint field
+			Endpoint:   taskName,
 			Duration:   d,
 			RecordedAt: startedAt,
 			StatusCode: 0,
 			BodySize:   0,
 			ClientIP:   "",
-			Scope:      scope,
+			Attributes: attributes,
 			Spans:      tc.GetSpans(),
 			IsTask:     true,
 		},
 	}
 }
 
-// CaptureTaskException captures an exception linked to a task
 func CaptureTaskException(traceId string, stacktrace string) {
 	if collectionFrameStore == nil {
 		return
 	}
-	CaptureTaskExceptionWithScope(traceId, stacktrace, nil)
+	CaptureTaskExceptionWithAttributes(traceId, stacktrace, nil)
 }
 
-// CaptureTaskExceptionWithScope captures an exception linked to a task with scope
-func CaptureTaskExceptionWithScope(traceId string, stacktrace string, scope map[string]string) {
+func CaptureTaskExceptionWithAttributes(traceId string, stacktrace string, attributes map[string]string) {
 	if collectionFrameStore == nil {
 		return
 	}
@@ -850,7 +815,7 @@ func CaptureTaskExceptionWithScope(traceId string, stacktrace string, scope map[
 			IsTask:     true,
 			StackTrace: stacktrace,
 			RecordedAt: time.Now(),
-			Scope:      scope,
+			Attributes: attributes,
 		},
 	}
 }
@@ -872,7 +837,6 @@ func StartSpanByTraceId(ctx context.Context, name string) *ActiveSpan {
 	}
 }
 
-// StartSpan starts a span using trace ID from context
 func StartSpan(ctx context.Context, name string) *ActiveSpan {
 	tc := GetTraceFromContext(ctx)
 	if tc == nil {
@@ -890,16 +854,14 @@ func StartSpan(ctx context.Context, name string) *ActiveSpan {
 	}
 }
 
-// CaptureTraceException captures an exception linked to a trace (backward compatible)
 func CaptureTraceException(traceId string, stacktrace string) {
 	if collectionFrameStore == nil {
 		return
 	}
-	CaptureTraceExceptionWithScope(traceId, stacktrace, nil)
+	CaptureTraceExceptionWithAttributes(traceId, stacktrace, nil)
 }
 
-// CaptureTraceExceptionWithScope captures an exception linked to a trace with scope
-func CaptureTraceExceptionWithScope(traceId string, stacktrace string, scope map[string]string) {
+func CaptureTraceExceptionWithAttributes(traceId string, stacktrace string, attributes map[string]string) {
 	if collectionFrameStore == nil {
 		return
 	}
@@ -909,21 +871,19 @@ func CaptureTraceExceptionWithScope(traceId string, stacktrace string, scope map
 			TraceId:    &traceId,
 			StackTrace: stacktrace,
 			RecordedAt: time.Now(),
-			Scope:      scope,
+			Attributes: attributes,
 		},
 	}
 }
 
-// CaptureException captures an exception without context (backward compatible)
 func CaptureException(err error) {
 	if collectionFrameStore == nil {
 		return
 	}
-	CaptureExceptionWithScope(err, nil, nil)
+	CaptureExceptionWithAttributes(err, nil, nil)
 }
 
-// CaptureExceptionWithScope captures an exception with scope
-func CaptureExceptionWithScope(err error, scope map[string]string, traceId *string) {
+func CaptureExceptionWithAttributes(err error, attributes map[string]string, traceId *string) {
 	if collectionFrameStore == nil {
 		return
 	}
@@ -933,17 +893,16 @@ func CaptureExceptionWithScope(err error, scope map[string]string, traceId *stri
 			TraceId:    traceId,
 			StackTrace: FormatErrorWithStack(err, CaptureStack(2)),
 			RecordedAt: time.Now(),
-			Scope:      scope,
+			Attributes: attributes,
 		},
 	}
 }
 
-// CaptureExceptionWithContext captures an exception extracting scope from context
 func CaptureExceptionWithContext(ctx context.Context, err error) {
 	if collectionFrameStore == nil {
 		return
 	}
-	scope := GetScopeFromContext(ctx)
+	attributes := GetAttributesFromContext(ctx)
 	isTask := GetIsTaskFromContext(ctx)
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
@@ -952,12 +911,11 @@ func CaptureExceptionWithContext(ctx context.Context, err error) {
 			IsTask:     isTask,
 			StackTrace: FormatErrorWithStack(err, CaptureStack(2)),
 			RecordedAt: time.Now(),
-			Scope:      scope.GetTags(),
+			Attributes: attributes.GetTags(),
 		},
 	}
 }
 
-// Recover recovers from panic and captures it (backward compatible, no scope)
 func Recover() {
 	r := recover()
 
@@ -976,7 +934,6 @@ func Recover() {
 	}
 }
 
-// RecoverWithContext recovers from panic and captures it with scope from context
 func RecoverWithContext(ctx context.Context) {
 	r := recover()
 
@@ -984,20 +941,19 @@ func RecoverWithContext(ctx context.Context) {
 		if collectionFrameStore == nil {
 			return
 		}
-		scope := GetScopeFromContext(ctx)
+		attributes := GetAttributesFromContext(ctx)
 		collectionFrameStore.messageQueue <- CollectionFrameMessage{
 			msgType: CollectionFrameMessageTypeException,
 			exceptionStackTrace: &ExceptionStackTrace{
 				TraceId:    nil,
 				StackTrace: FormatRWithStack(r, CaptureStack(2)),
 				RecordedAt: time.Now(),
-				Scope:      scope.GetTags(),
+				Attributes: attributes.GetTags(),
 			},
 		}
 	}
 }
 
-// CaptureMessage captures a message as an exception with minimal stack trace
 func CaptureMessage(msg string) {
 	if collectionFrameStore == nil {
 		return
@@ -1005,13 +961,12 @@ func CaptureMessage(msg string) {
 	CaptureMessageWithContext(context.Background(), msg)
 }
 
-// CaptureMessageWithContext captures a message with context as an exception
 func CaptureMessageWithContext(ctx context.Context, msg string) {
 	if collectionFrameStore == nil {
 		return
 	}
 
-	scope := GetScopeFromContext(ctx)
+	attributes := GetAttributesFromContext(ctx)
 	isTask := GetIsTaskFromContext(ctx)
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
@@ -1020,14 +975,13 @@ func CaptureMessageWithContext(ctx context.Context, msg string) {
 			IsTask:     isTask,
 			StackTrace: msg,
 			RecordedAt: time.Now(),
-			Scope:      scope.GetTags(),
+			Attributes: attributes.GetTags(),
 			IsMessage:  true,
 		},
 	}
 }
 
-// CaptureMessageScope captures a message with an explicit scope map
-func CaptureMessageScope(msg string, scope map[string]string) {
+func CaptureMessageAttributes(msg string, attributes map[string]string) {
 	if collectionFrameStore == nil {
 		return
 	}
@@ -1037,7 +991,7 @@ func CaptureMessageScope(msg string, scope map[string]string) {
 			TraceId:    nil,
 			StackTrace: msg,
 			RecordedAt: time.Now(),
-			Scope:      scope,
+			Attributes: attributes,
 			IsMessage:  true,
 		},
 	}
@@ -1073,15 +1027,13 @@ func (e *StackTraceError) GetStackFrames() []runtime.Frame {
 }
 
 func NewStackTraceErrorf(format string, args ...any) *StackTraceError {
-	// if the error is already a StackTraceError we should not recapture frames
 	err := fmt.Errorf(format, args...)
 
-	// I hate how stupid this is but I think this is the "right" way to do this
 	var existing *StackTraceError
 	if errors.As(err, &existing) {
 		return &StackTraceError{
 			Err:    err,
-			Frames: existing.Frames, // reuse existing stack
+			Frames: existing.Frames,
 		}
 	}
 
@@ -1112,7 +1064,6 @@ func wrapAndExecute(ctx context.Context, f TaskExecutor) (s *string, err error) 
 				errFromRecover = fmt.Errorf("%v", v)
 			}
 
-			// we should repanic whenever the users function panics so that the user can handle it
 			err = &PanicError{Value: errFromRecover, Stack: m}
 		}
 	}()
@@ -1124,16 +1075,15 @@ func wrapAndExecute(ctx context.Context, f TaskExecutor) (s *string, err error) 
 
 type TaskExecutor = func(ctx context.Context)
 
-// MeasureTask measures and captures a background task
 func MeasureTask(title string, f TaskExecutor) {
 	tc := &TraceContext{
 		Id:     uuid.NewString(),
 		IsTask: true,
 	}
-	scope := NewScope()
+	attributes := NewAttributes()
 	start := time.Now()
 
-	ctx := context.WithValue(context.Background(), string(CtxScopeKey), scope)
+	ctx := context.WithValue(context.Background(), string(CtxAttributesKey), attributes)
 	ctx = context.WithValue(ctx, string(CtxTraceKey), tc)
 
 	stackTraceFormatted, err := wrapAndExecute(ctx, f)
@@ -1141,10 +1091,10 @@ func MeasureTask(title string, f TaskExecutor) {
 	isError := stackTraceFormatted != nil
 	if ShouldSample(isError) {
 		duration := time.Since(start)
-		CaptureTask(tc, title, duration, start, scope.GetTags())
+		CaptureTask(tc, title, duration, start, attributes.GetTags())
 
 		if stackTraceFormatted != nil {
-			CaptureTaskExceptionWithScope(tc.Id, *stackTraceFormatted, scope.GetTags())
+			CaptureTaskExceptionWithAttributes(tc.Id, *stackTraceFormatted, attributes.GetTags())
 		}
 	}
 
