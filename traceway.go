@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"reflect"
@@ -375,6 +376,8 @@ type CollectionFrameStore struct {
 	metricsInterval     time.Duration
 	version             string
 	serverName          string
+	sampleRate          float64
+	errorSampleRate     float64
 }
 
 func InitCollectionFrameStore(
@@ -387,6 +390,8 @@ func InitCollectionFrameStore(
 	metricsInterval time.Duration,
 	version string,
 	serverName string,
+	sampleRate float64,
+	errorSampleRate float64,
 ) *CollectionFrameStore {
 	store := &CollectionFrameStore{
 		current:      nil,
@@ -405,6 +410,8 @@ func InitCollectionFrameStore(
 		metricsInterval:     metricsInterval,
 		version:             version,
 		serverName:          serverName,
+		sampleRate:          sampleRate,
+		errorSampleRate:     errorSampleRate,
 	}
 
 	store.wg.Add(1)
@@ -619,6 +626,8 @@ type TracewayOptions struct {
 	metricsInterval     time.Duration
 	version             string
 	serverName          string
+	sampleRate          float64
+	errorSampleRate     float64
 }
 
 func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
@@ -629,6 +638,8 @@ func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
 		metricsInterval:     30 * time.Second,
 		version:             "",
 		serverName:          getHostname(),
+		sampleRate:          1,
+		errorSampleRate:     1,
 	}
 	for _, o := range options {
 		o(svr)
@@ -670,6 +681,16 @@ func WithServerName(val string) func(*TracewayOptions) {
 		s.serverName = val
 	}
 }
+func WithSampleRate(val float64) func(*TracewayOptions) {
+	return func(s *TracewayOptions) {
+		s.sampleRate = val
+	}
+}
+func WithErrorSampleRate(val float64) func(*TracewayOptions) {
+	return func(s *TracewayOptions) {
+		s.errorSampleRate = val
+	}
+}
 
 func Init(connectionString string, options ...func(*TracewayOptions)) error {
 	if collectionFrameStore != nil {
@@ -692,8 +713,29 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 		tracewayOptions.metricsInterval,
 		tracewayOptions.version,
 		tracewayOptions.serverName,
+		tracewayOptions.sampleRate,
+		tracewayOptions.errorSampleRate,
 	)
 	return nil
+}
+
+// ShouldSample returns true if this event should be captured based on sample rates.
+// When isError is true, ErrorSampleRate is used; otherwise SampleRate is used.
+func ShouldSample(isError bool) bool {
+	if collectionFrameStore == nil {
+		return false
+	}
+	rate := collectionFrameStore.sampleRate
+	if isError {
+		rate = collectionFrameStore.errorSampleRate
+	}
+	if rate >= 1 {
+		return true
+	}
+	if rate <= 0 {
+		return false
+	}
+	return rand.Float64() < rate
 }
 
 func CaptureMetric(name string, value float64) {
@@ -1096,11 +1138,14 @@ func MeasureTask(title string, f TaskExecutor) {
 
 	stackTraceFormatted, err := wrapAndExecute(ctx, f)
 
-	duration := time.Since(start)
-	CaptureTask(tc, title, duration, start, scope.GetTags())
+	isError := stackTraceFormatted != nil
+	if ShouldSample(isError) {
+		duration := time.Since(start)
+		CaptureTask(tc, title, duration, start, scope.GetTags())
 
-	if stackTraceFormatted != nil {
-		CaptureTaskExceptionWithScope(tc.Id, *stackTraceFormatted, scope.GetTags())
+		if stackTraceFormatted != nil {
+			CaptureTaskExceptionWithScope(tc.Id, *stackTraceFormatted, scope.GetTags())
+		}
 	}
 
 	if err != nil {

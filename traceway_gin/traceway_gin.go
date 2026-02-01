@@ -166,6 +166,16 @@ func WithServerName(val string) func(*TracewayGinOptions) {
 		s.tracewayOpts = append(s.tracewayOpts, traceway.WithServerName(val))
 	}
 }
+func WithSampleRate(val float64) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithSampleRate(val))
+	}
+}
+func WithErrorSampleRate(val float64) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithErrorSampleRate(val))
+	}
+}
 
 func isStaticRoute(c *gin.Context) bool {
 	handlerName := c.HandlerName()
@@ -241,6 +251,11 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		traceEndpoint := method + " " + routePath
 
 		defer recover()
+
+		isError := stackTraceFormatted != nil || len(c.Errors) > 0 || statusCode >= 500
+		if !traceway.ShouldSample(isError) {
+			return
+		}
 
 		traceway.CaptureTraceWithScope(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, scope.GetTags())
 
