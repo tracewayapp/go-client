@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Known sub-modules
-SUBMODULES=("tracewaygin" "tracewayhttp" "tracewaydb")
+SUBMODULES=("tracewaygin" "tracewayhttp" "tracewaydb" "tracewayfasthttp" "tracewayfiber" "tracewaychi")
 
 CORE_MODULE="go.tracewayapp.com"
 
