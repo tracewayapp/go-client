@@ -11,7 +11,7 @@ import (
 
 	traceway "go.tracewayapp.com"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 )
 
@@ -31,7 +31,7 @@ func formatErrorChain(err error) string {
 	return sb.String()
 }
 
-func wrapAndExecute(repanic bool, c *fiber.Ctx) (stackTrace *string, nextErr error, panicErr error) {
+func wrapAndExecute(repanic bool, c fiber.Ctx) (stackTrace *string, nextErr error, panicErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
@@ -56,7 +56,7 @@ func wrapAndExecute(repanic bool, c *fiber.Ctx) (stackTrace *string, nextErr err
 type RecordingFlag byte
 
 const (
-	RecordingUrl    RecordingFlag = 1 << iota
+	RecordingUrl RecordingFlag = 1 << iota
 	RecordingQuery
 	RecordingBody
 	RecordingHeader
@@ -70,10 +70,10 @@ type TracewayFiberOptions struct {
 	recordUnmatched  bool
 	ignoredPaths     map[string]struct{}
 	onErrorRecording RecordingFlag
-	filter           func(c *fiber.Ctx) bool
+	filter           func(c fiber.Ctx) bool
 }
 
-func WithFilter(fn func(c *fiber.Ctx) bool) func(*TracewayFiberOptions) {
+func WithFilter(fn func(c fiber.Ctx) bool) func(*TracewayFiberOptions) {
 	return func(s *TracewayFiberOptions) {
 		s.filter = fn
 	}
@@ -163,7 +163,7 @@ func WithErrorSampleRate(val float64) func(*TracewayFiberOptions) {
 }
 
 // GetAttributesFromCtx extracts Attributes from Fiber's Locals store.
-func GetAttributesFromCtx(c *fiber.Ctx) *traceway.Attributes {
+func GetAttributesFromCtx(c fiber.Ctx) *traceway.Attributes {
 	if v := c.Locals(string(traceway.CtxAttributesKey)); v != nil {
 		if attr, ok := v.(*traceway.Attributes); ok {
 			return attr
@@ -173,7 +173,7 @@ func GetAttributesFromCtx(c *fiber.Ctx) *traceway.Attributes {
 }
 
 // GetTraceFromCtx extracts TraceContext from Fiber's Locals store.
-func GetTraceFromCtx(c *fiber.Ctx) *traceway.TraceContext {
+func GetTraceFromCtx(c fiber.Ctx) *traceway.TraceContext {
 	if v := c.Locals(string(traceway.CtxTraceKey)); v != nil {
 		if tc, ok := v.(*traceway.TraceContext); ok {
 			return tc
@@ -190,7 +190,7 @@ func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.
 
 	traceway.Init(connectionString, opts.tracewayOpts...)
 
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		if opts.filter != nil && !opts.filter(c) {
 			return c.Next()
 		}
