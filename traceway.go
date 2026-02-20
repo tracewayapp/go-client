@@ -248,9 +248,10 @@ type ExceptionStackTrace struct {
 }
 
 type MetricRecord struct {
-	Name       string    `json:"name"`
-	Value      float64   `json:"value"`
-	RecordedAt time.Time `json:"recordedAt"`
+	Name       string            `json:"name"`
+	Value      float64           `json:"value"`
+	RecordedAt time.Time         `json:"recordedAt"`
+	Tags       map[string]string `json:"tags,omitempty"`
 }
 
 type Trace struct {
@@ -708,6 +709,21 @@ func CaptureMetric(name string, value float64) {
 			Name:       name,
 			Value:      value,
 			RecordedAt: time.Now(),
+		},
+	}
+}
+
+func CaptureMetricWithTags(name string, value float64, tags map[string]string) {
+	if collectionFrameStore == nil {
+		return
+	}
+	collectionFrameStore.messageQueue <- CollectionFrameMessage{
+		msgType: CollectionFrameMessageTypeMetric,
+		metric: &MetricRecord{
+			Name:       name,
+			Value:      value,
+			RecordedAt: time.Now(),
+			Tags:       tags,
 		},
 	}
 }
