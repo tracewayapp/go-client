@@ -8,3 +8,5 @@ require (
 )
 
 require golang.org/x/sys v0.35.0 // indirect
+
+replace go.tracewayapp.com => ../
