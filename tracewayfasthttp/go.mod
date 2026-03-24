@@ -14,3 +14,5 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 )
+
+replace go.tracewayapp.com => ../
