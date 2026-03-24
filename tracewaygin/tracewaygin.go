@@ -217,8 +217,15 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		method := c.Request.Method
 		clientIP := c.ClientIP()
 
+		distributedTraceId := c.GetHeader("traceway-trace-id")
+
 		tc := &traceway.TraceContext{
-			Id: uuid.NewString(),
+			Id:                 uuid.NewString(),
+			DistributedTraceId: distributedTraceId,
+		}
+
+		if distributedTraceId != "" {
+			c.Header("traceway-trace-id", distributedTraceId)
 		}
 
 		attributes := traceway.NewAttributes()

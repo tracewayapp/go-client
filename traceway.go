@@ -89,10 +89,11 @@ func (s *Attributes) Clear() {
 var defaultAttributes = NewAttributes()
 
 type TraceContext struct {
-	Id     string
-	IsTask bool
-	Spans  []Span
-	mu     sync.Mutex
+	Id                 string
+	IsTask             bool
+	DistributedTraceId string
+	Spans              []Span
+	mu                 sync.Mutex
 }
 
 func (t *TraceContext) AddSpan(span Span) {
@@ -140,6 +141,13 @@ func GetTraceIdFromContext(ctx context.Context) *string {
 		return &tc.Id
 	}
 	return nil
+}
+
+func InjectDistributedTraceHeaders(ctx context.Context, req *http.Request) {
+	tc := GetTraceFromContext(ctx)
+	if tc != nil && tc.DistributedTraceId != "" {
+		req.Header.Set("traceway-trace-id", tc.DistributedTraceId)
+	}
 }
 
 func GetIsTaskFromContext(ctx context.Context) bool {
@@ -239,12 +247,13 @@ func FormatErrorWithStack(err error, frames []runtime.Frame) string {
 }
 
 type ExceptionStackTrace struct {
-	TraceId    *string           `json:"traceId"`
-	IsTask     bool              `json:"isTask,omitempty"`
-	StackTrace string            `json:"stackTrace"`
-	RecordedAt time.Time         `json:"recordedAt"`
-	Attributes map[string]string `json:"attributes,omitempty"`
-	IsMessage  bool              `json:"isMessage"`
+	TraceId            *string           `json:"traceId"`
+	IsTask             bool              `json:"isTask,omitempty"`
+	StackTrace         string            `json:"stackTrace"`
+	RecordedAt         time.Time         `json:"recordedAt"`
+	Attributes         map[string]string `json:"attributes,omitempty"`
+	IsMessage          bool              `json:"isMessage"`
+	DistributedTraceId *string           `json:"distributedTraceId,omitempty"`
 }
 
 type MetricRecord struct {
@@ -255,16 +264,17 @@ type MetricRecord struct {
 }
 
 type Trace struct {
-	Id         string            `json:"id"`
-	Endpoint   string            `json:"endpoint"`
-	Duration   time.Duration     `json:"duration"`
-	RecordedAt time.Time         `json:"recordedAt"`
-	StatusCode int               `json:"statusCode"`
-	BodySize   int               `json:"bodySize"`
-	ClientIP   string            `json:"clientIP"`
-	Attributes map[string]string `json:"attributes,omitempty"`
-	Spans      []Span            `json:"spans,omitempty"`
-	IsTask     bool              `json:"isTask,omitempty"`
+	Id                 string            `json:"id"`
+	Endpoint           string            `json:"endpoint"`
+	Duration           time.Duration     `json:"duration"`
+	RecordedAt         time.Time         `json:"recordedAt"`
+	StatusCode         int               `json:"statusCode"`
+	BodySize           int               `json:"bodySize"`
+	ClientIP           string            `json:"clientIP"`
+	Attributes         map[string]string `json:"attributes,omitempty"`
+	Spans              []Span            `json:"spans,omitempty"`
+	IsTask             bool              `json:"isTask,omitempty"`
+	DistributedTraceId string            `json:"distributedTraceId,omitempty"`
 }
 
 type Span struct {
@@ -760,15 +770,16 @@ func CaptureTraceWithAttributes(
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeTrace,
 		trace: &Trace{
-			Id:         tc.Id,
-			Endpoint:   endpoint,
-			Duration:   d,
-			RecordedAt: startedAt,
-			StatusCode: statusCode,
-			BodySize:   bodySize,
-			ClientIP:   clientIP,
-			Attributes: attributes,
-			Spans:      tc.GetSpans(),
+			Id:                 tc.Id,
+			Endpoint:           endpoint,
+			Duration:           d,
+			RecordedAt:         startedAt,
+			StatusCode:         statusCode,
+			BodySize:           bodySize,
+			ClientIP:           clientIP,
+			Attributes:         attributes,
+			Spans:              tc.GetSpans(),
+			DistributedTraceId: tc.DistributedTraceId,
 		},
 	}
 }
@@ -789,16 +800,17 @@ func CaptureTask(
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeTrace,
 		trace: &Trace{
-			Id:         tc.Id,
-			Endpoint:   taskName,
-			Duration:   d,
-			RecordedAt: startedAt,
-			StatusCode: 0,
-			BodySize:   0,
-			ClientIP:   "",
-			Attributes: attributes,
-			Spans:      tc.GetSpans(),
-			IsTask:     true,
+			Id:                 tc.Id,
+			Endpoint:           taskName,
+			Duration:           d,
+			RecordedAt:         startedAt,
+			StatusCode:         0,
+			BodySize:           0,
+			ClientIP:           "",
+			Attributes:         attributes,
+			Spans:              tc.GetSpans(),
+			IsTask:             true,
+			DistributedTraceId: tc.DistributedTraceId,
 		},
 	}
 }
@@ -910,14 +922,19 @@ func CaptureExceptionWithContext(ctx context.Context, err error) {
 	}
 	attributes := GetAttributesFromContext(ctx)
 	isTask := GetIsTaskFromContext(ctx)
+	var distributedTraceId *string
+	if tc := GetTraceFromContext(ctx); tc != nil && tc.DistributedTraceId != "" {
+		distributedTraceId = &tc.DistributedTraceId
+	}
 	collectionFrameStore.messageQueue <- CollectionFrameMessage{
 		msgType: CollectionFrameMessageTypeException,
 		exceptionStackTrace: &ExceptionStackTrace{
-			TraceId:    GetTraceIdFromContext(ctx),
-			IsTask:     isTask,
-			StackTrace: FormatErrorWithStack(err, CaptureStack(2)),
-			RecordedAt: time.Now(),
-			Attributes: attributes.GetTags(),
+			TraceId:            GetTraceIdFromContext(ctx),
+			IsTask:             isTask,
+			StackTrace:         FormatErrorWithStack(err, CaptureStack(2)),
+			RecordedAt:         time.Now(),
+			Attributes:         attributes.GetTags(),
+			DistributedTraceId: distributedTraceId,
 		},
 	}
 }
