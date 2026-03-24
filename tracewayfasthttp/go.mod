@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/google/uuid v1.6.0
 	github.com/valyala/fasthttp v1.62.0
-	go.tracewayapp.com v1.0.1
+	go.tracewayapp.com v1.0.2
 )
 
 require (
@@ -14,5 +14,3 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 )
-
-replace go.tracewayapp.com => ../

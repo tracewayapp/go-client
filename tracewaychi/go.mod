@@ -3,7 +3,7 @@ module go.tracewayapp.com/tracewaychi
 go 1.25.1
 
 require (
-	go.tracewayapp.com v1.0.1
+	go.tracewayapp.com v1.0.2
 	go.tracewayapp.com/tracewayhttp v0.4.1
 )
 
@@ -13,5 +13,3 @@ require (
 )
 
 replace go.tracewayapp.com/tracewayhttp => ../tracewayhttp
-
-replace go.tracewayapp.com => ../
