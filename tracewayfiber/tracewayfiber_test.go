@@ -15,10 +15,13 @@ import (
 
 	traceway "go.tracewayapp.com"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 var testMiddleware fiber.Handler
+var defaultTestConfig = fiber.TestConfig{
+	Timeout: -1,
+}
 
 func TestMain(m *testing.M) {
 	testMiddleware = New("testtoken@http://localhost:19876/noop")
@@ -40,7 +43,7 @@ func serveFiber(t *testing.T, mw fiber.Handler, method, path string, body []byte
 	case "DELETE":
 		app.Delete(path, handler)
 	default:
-		app.Add(method, path, handler)
+		app.Add([]string{method}, path, handler)
 	}
 
 	var reqBody io.Reader
@@ -49,7 +52,7 @@ func serveFiber(t *testing.T, mw fiber.Handler, method, path string, body []byte
 	}
 	req := httptest.NewRequest(method, path, reqBody)
 
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -113,7 +116,7 @@ func TestWithRecordUnmatched(t *testing.T) {
 
 func TestWithFilter(t *testing.T) {
 	called := false
-	fn := func(*fiber.Ctx) bool { called = true; return true }
+	fn := func(fiber.Ctx) bool { called = true; return true }
 	opts := &TracewayFiberOptions{}
 	WithFilter(fn)(opts)
 	if opts.filter == nil {
@@ -219,7 +222,7 @@ func TestWithErrorSampleRate(t *testing.T) {
 }
 
 func TestMiddleware_NormalRequest(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/hello", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/hello", nil, func(c fiber.Ctx) error {
 		return c.SendString("OK")
 	})
 	if resp.StatusCode != 200 {
@@ -233,7 +236,7 @@ func TestMiddleware_NormalRequest(t *testing.T) {
 }
 
 func TestMiddleware_CustomStatusCode(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/notfound", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/notfound", nil, func(c fiber.Ctx) error {
 		return c.Status(404).SendString("not found")
 	})
 	if resp.StatusCode != 404 {
@@ -242,7 +245,7 @@ func TestMiddleware_CustomStatusCode(t *testing.T) {
 }
 
 func TestMiddleware_ContextHasAttributesAndTrace(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/ctx", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/ctx", nil, func(c fiber.Ctx) error {
 		attributes := GetAttributesFromCtx(c)
 		tc := GetTraceFromCtx(c)
 		if attributes == nil {
@@ -266,7 +269,7 @@ func TestMiddleware_ContextHasAttributesAndTrace(t *testing.T) {
 func TestMiddleware_IgnoredPathSkipsRecording(t *testing.T) {
 	mw := New("testtoken@http://localhost:19876/noop", WithIgnoredPaths("/health"))
 	called := false
-	resp := serveFiber(t, mw, "GET", "/health", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/health", nil, func(c fiber.Ctx) error {
 		called = true
 		return c.SendString("ok")
 	})
@@ -279,11 +282,11 @@ func TestMiddleware_IgnoredPathSkipsRecording(t *testing.T) {
 }
 
 func TestMiddleware_FilterRejectSkips(t *testing.T) {
-	mw := New("testtoken@http://localhost:19876/noop", WithFilter(func(c *fiber.Ctx) bool {
+	mw := New("testtoken@http://localhost:19876/noop", WithFilter(func(c fiber.Ctx) bool {
 		return false
 	}))
 	called := false
-	resp := serveFiber(t, mw, "GET", "/filtered", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/filtered", nil, func(c fiber.Ctx) error {
 		called = true
 		return c.SendString("ok")
 	})
@@ -296,10 +299,10 @@ func TestMiddleware_FilterRejectSkips(t *testing.T) {
 }
 
 func TestMiddleware_FilterAcceptRecords(t *testing.T) {
-	mw := New("testtoken@http://localhost:19876/noop", WithFilter(func(c *fiber.Ctx) bool {
+	mw := New("testtoken@http://localhost:19876/noop", WithFilter(func(c fiber.Ctx) bool {
 		return true
 	}))
-	resp := serveFiber(t, mw, "GET", "/accepted", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/accepted", nil, func(c fiber.Ctx) error {
 		attributes := GetAttributesFromCtx(c)
 		tc := GetTraceFromCtx(c)
 		if attributes == nil || tc == nil {
@@ -316,7 +319,7 @@ func TestMiddleware_FilterAcceptRecords(t *testing.T) {
 
 func TestMiddleware_PanicRecovery_NoRepanic(t *testing.T) {
 	mw := New("testtoken@http://localhost:19876/noop", WithRepanic(false))
-	resp := serveFiber(t, mw, "GET", "/panic", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/panic", nil, func(c fiber.Ctx) error {
 		panic("boom")
 	})
 	if resp.StatusCode != 500 {
@@ -328,7 +331,7 @@ func TestMiddleware_PanicRecovery_Repanic(t *testing.T) {
 	// In Fiber, repanic=true returns the panic error to Fiber's error handler
 	// instead of re-panicking (since Fiber runs handlers in server goroutines).
 	mw := New("testtoken@http://localhost:19876/noop", WithRepanic(true))
-	resp := serveFiber(t, mw, "GET", "/panic", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/panic", nil, func(c fiber.Ctx) error {
 		panic("boom")
 	})
 	// Fiber's default error handler returns 500 for errors
@@ -339,7 +342,7 @@ func TestMiddleware_PanicRecovery_Repanic(t *testing.T) {
 
 func TestMiddleware_PanicRecovery_ErrorType(t *testing.T) {
 	mw := New("testtoken@http://localhost:19876/noop", WithRepanic(true))
-	resp := serveFiber(t, mw, "GET", "/panic-err", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/panic-err", nil, func(c fiber.Ctx) error {
 		panic(fmt.Errorf("original error"))
 	})
 	if resp.StatusCode != 500 {
@@ -348,7 +351,7 @@ func TestMiddleware_PanicRecovery_ErrorType(t *testing.T) {
 }
 
 func TestMiddleware_HandlerErrors(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/handler-err", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/handler-err", nil, func(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "handler failed")
 	})
 	if resp.StatusCode != 500 {
@@ -357,7 +360,7 @@ func TestMiddleware_HandlerErrors(t *testing.T) {
 }
 
 func TestMiddleware_HandlerErrorsWithStack(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/handler-err-stack", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/handler-err-stack", nil, func(c fiber.Ctx) error {
 		return &traceway.StackTraceError{
 			Err: fmt.Errorf("wrapped error"),
 			Frames: []runtime.Frame{
@@ -371,7 +374,7 @@ func TestMiddleware_HandlerErrorsWithStack(t *testing.T) {
 }
 
 func TestMiddleware_AttributesTagsPropagated(t *testing.T) {
-	resp := serveFiber(t, testMiddleware, "GET", "/tags", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, testMiddleware, "GET", "/tags", nil, func(c fiber.Ctx) error {
 		attributes := GetAttributesFromCtx(c)
 		attributes.SetTag("user_id", "42")
 		return c.SendString("ok")
@@ -388,7 +391,7 @@ func TestMiddleware_UnmatchedRoute_DefaultSkipped(t *testing.T) {
 	// No route registered for /unmatched
 
 	req := httptest.NewRequest("GET", "/unmatched", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -404,7 +407,7 @@ func TestMiddleware_UnmatchedRoute_Recorded(t *testing.T) {
 	// No route registered for /unmatched-recorded
 
 	req := httptest.NewRequest("GET", "/unmatched-recorded", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -418,7 +421,7 @@ func TestMiddleware_OnErrorRecording_Url(t *testing.T) {
 		WithRepanic(false),
 		WithOnErrorRecording(RecordingUrl),
 	)
-	resp := serveFiber(t, mw, "GET", "/error-url", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/error-url", nil, func(c fiber.Ctx) error {
 		panic("url test")
 	})
 	if resp.StatusCode != 500 {
@@ -433,11 +436,11 @@ func TestMiddleware_OnErrorRecording_Query(t *testing.T) {
 	)
 	app := fiber.New()
 	app.Use(mw)
-	app.Get("/error-query", func(c *fiber.Ctx) error {
+	app.Get("/error-query", func(c fiber.Ctx) error {
 		panic("query test")
 	})
 	req := httptest.NewRequest("GET", "/error-query?foo=bar", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -453,12 +456,12 @@ func TestMiddleware_OnErrorRecording_Body(t *testing.T) {
 	)
 	app := fiber.New()
 	app.Use(mw)
-	app.Post("/error-body", func(c *fiber.Ctx) error {
+	app.Post("/error-body", func(c fiber.Ctx) error {
 		panic("body test")
 	})
 	req := httptest.NewRequest("POST", "/error-body", bytes.NewBufferString(`{"key":"value"}`))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -472,7 +475,7 @@ func TestMiddleware_OnErrorRecording_Headers(t *testing.T) {
 		WithRepanic(false),
 		WithOnErrorRecording(RecordingHeader),
 	)
-	resp := serveFiber(t, mw, "GET", "/error-headers", nil, func(c *fiber.Ctx) error {
+	resp := serveFiber(t, mw, "GET", "/error-headers", nil, func(c fiber.Ctx) error {
 		panic("headers test")
 	})
 	if resp.StatusCode != 500 {
@@ -487,13 +490,13 @@ func TestMiddleware_OnErrorRecording_BodyNonJson(t *testing.T) {
 	)
 	app := fiber.New()
 	app.Use(mw)
-	app.Post("/error-body-text", func(c *fiber.Ctx) error {
+	app.Post("/error-body-text", func(c fiber.Ctx) error {
 		panic("body non-json test")
 	})
 	body := bytes.NewBufferString("plain text body")
 	req := httptest.NewRequest("POST", "/error-body-text", body)
 	req.Header.Set("Content-Type", "text/plain")
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -505,7 +508,7 @@ func TestMiddleware_OnErrorRecording_BodyNonJson(t *testing.T) {
 func TestMiddleware_MultipleRequestsSequential(t *testing.T) {
 	app := fiber.New()
 	app.Use(testMiddleware)
-	app.Get("/seq", func(c *fiber.Ctx) error {
+	app.Get("/seq", func(c fiber.Ctx) error {
 		tc := GetTraceFromCtx(c)
 		if tc == nil {
 			return c.Status(500).SendString("no trace")
@@ -515,7 +518,7 @@ func TestMiddleware_MultipleRequestsSequential(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		req := httptest.NewRequest("GET", "/seq", nil)
-		resp, err := app.Test(req, -1)
+		resp, err := app.Test(req, defaultTestConfig)
 		if err != nil {
 			t.Fatalf("request %d: app.Test: %v", i, err)
 		}
@@ -530,7 +533,7 @@ func TestMiddleware_MultipleRequestsSequential(t *testing.T) {
 func TestWrapAndExecute_NoPanic(t *testing.T) {
 	app := fiber.New()
 	var handlerCalled bool
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		st, nextErr, panicErr := wrapAndExecute(false, c)
 		if st != nil {
 			return fmt.Errorf("expected nil stack, got %v", *st)
@@ -543,13 +546,13 @@ func TestWrapAndExecute_NoPanic(t *testing.T) {
 		}
 		return nil
 	})
-	app.Get("/wae-ok", func(c *fiber.Ctx) error {
+	app.Get("/wae-ok", func(c fiber.Ctx) error {
 		handlerCalled = true
 		return c.SendString("ok")
 	})
 
 	req := httptest.NewRequest("GET", "/wae-ok", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -565,7 +568,7 @@ func TestWrapAndExecute_PanicString_Repanic(t *testing.T) {
 	app := fiber.New()
 	var capturedStack *string
 	var capturedPanicErr error
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		st, _, panicErr := wrapAndExecute(true, c)
 		capturedStack = st
 		capturedPanicErr = panicErr
@@ -574,12 +577,12 @@ func TestWrapAndExecute_PanicString_Repanic(t *testing.T) {
 		}
 		return nil
 	})
-	app.Get("/wae-str", func(c *fiber.Ctx) error {
+	app.Get("/wae-str", func(c fiber.Ctx) error {
 		panic("test panic")
 	})
 
 	req := httptest.NewRequest("GET", "/wae-str", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -602,7 +605,7 @@ func TestWrapAndExecute_PanicError_Repanic(t *testing.T) {
 	origErr := fmt.Errorf("original error")
 	var capturedStack *string
 	var capturedPanicErr error
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		st, _, panicErr := wrapAndExecute(true, c)
 		capturedStack = st
 		capturedPanicErr = panicErr
@@ -611,12 +614,12 @@ func TestWrapAndExecute_PanicError_Repanic(t *testing.T) {
 		}
 		return nil
 	})
-	app.Get("/wae-err", func(c *fiber.Ctx) error {
+	app.Get("/wae-err", func(c fiber.Ctx) error {
 		panic(origErr)
 	})
 
 	req := httptest.NewRequest("GET", "/wae-err", nil)
-	_, err := app.Test(req, -1)
+	_, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
@@ -632,18 +635,18 @@ func TestWrapAndExecute_PanicString_NoRepanic(t *testing.T) {
 	app := fiber.New()
 	var capturedStack *string
 	var capturedPanicErr error
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		st, _, panicErr := wrapAndExecute(false, c)
 		capturedStack = st
 		capturedPanicErr = panicErr
 		return nil
 	})
-	app.Get("/wae-norep", func(c *fiber.Ctx) error {
+	app.Get("/wae-norep", func(c fiber.Ctx) error {
 		panic("test panic")
 	})
 
 	req := httptest.NewRequest("GET", "/wae-norep", nil)
-	resp, err := app.Test(req, -1)
+	resp, err := app.Test(req, defaultTestConfig)
 	if err != nil {
 		t.Fatalf("app.Test: %v", err)
 	}
