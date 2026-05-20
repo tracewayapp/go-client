@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/gofiber/fiber/v3 v3.0.0
 	github.com/google/uuid v1.6.0
-	go.tracewayapp.com v1.0.2
+	go.tracewayapp.com v1.0.3
 )
 
 require (
@@ -24,5 +24,3 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 )
-
-replace go.tracewayapp.com => ../

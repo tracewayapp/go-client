@@ -1,4 +1,6 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+go.tracewayapp.com v1.0.3 h1:6TlmfLhgUwTDbFDXpvelE6HSMJRSI3TOeDr0cy6JUsQ=
+go.tracewayapp.com v1.0.3/go.mod h1:0eQ/FAOA4VzTxrevTayqfYBhTEQYHEfMTPv/IiZ7F6E=
 golang.org/x/sys v0.35.0 h1:vz1N37gP5bs89s7He8XuIYXpyY0+QlsKmzipCbUtyxI=
 golang.org/x/sys v0.35.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
