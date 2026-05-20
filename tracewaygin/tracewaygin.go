@@ -241,15 +241,12 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		}
 
 		attributes := traceway.NewAttributes()
-		streamMarker := traceway.NewStreamMarker()
 
 		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxAttributesKey), attributes)
 		ctx = context.WithValue(ctx, string(traceway.CtxTraceKey), tc)
-		ctx = context.WithValue(ctx, string(traceway.CtxStreamMarkerKey), streamMarker)
 		c.Request = c.Request.WithContext(ctx)
 		c.Set(string(traceway.CtxAttributesKey), attributes)
 		c.Set(string(traceway.CtxTraceKey), tc)
-		c.Set(string(traceway.CtxStreamMarkerKey), streamMarker)
 
 		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
 
@@ -276,18 +273,23 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			return
 		}
 
-		isStream := streamMarker.IsStream()
-		if !isStream && opts.streamingPaths != nil {
-			if _, ok := opts.streamingPaths[routePath]; ok {
-				isStream = true
+		if _, alreadyMarked := attributes.GetTag(traceway.StreamAttributeKey); !alreadyMarked {
+			markStream := false
+			if opts.streamingPaths != nil {
+				if _, ok := opts.streamingPaths[routePath]; ok {
+					markStream = true
+				}
+			}
+			if !markStream {
+				markStream = traceway.IsStreamingContentType(c.Writer.Header().Get("Content-Type")) ||
+					traceway.IsWebSocketUpgrade(statusCode, c.Writer.Header().Get("Upgrade"))
+			}
+			if markStream {
+				attributes.SetTag(traceway.StreamAttributeKey, "true")
 			}
 		}
-		if !isStream {
-			isStream = traceway.IsStreamingContentType(c.Writer.Header().Get("Content-Type")) ||
-				traceway.IsWebSocketUpgrade(statusCode, c.Writer.Header().Get("Upgrade"))
-		}
 
-		traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, attributes.GetTags(), isStream)
+		traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, attributes.GetTags())
 
 		exceptionTags := map[string]string{}
 

@@ -195,10 +195,8 @@ func GetTraceFromCtx(c fiber.Ctx) *traceway.TraceContext {
 }
 
 func MarkStream(c fiber.Ctx) {
-	if v := c.Locals(string(traceway.CtxStreamMarkerKey)); v != nil {
-		if m, ok := v.(*traceway.StreamMarker); ok {
-			m.Mark()
-		}
+	if attrs := GetAttributesFromCtx(c); attrs != nil {
+		attrs.SetTag(traceway.StreamAttributeKey, "true")
 	}
 }
 
@@ -237,11 +235,9 @@ func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.
 			Id: uuid.NewString(),
 		}
 		attributes := traceway.NewAttributes()
-		streamMarker := traceway.NewStreamMarker()
 
 		c.Locals(string(traceway.CtxAttributesKey), attributes)
 		c.Locals(string(traceway.CtxTraceKey), tc)
-		c.Locals(string(traceway.CtxStreamMarkerKey), streamMarker)
 
 		stackTraceFormatted, nextErr, panicErr := wrapAndExecute(opts.repanic, c)
 
@@ -264,18 +260,23 @@ func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.
 			return effectiveErr
 		}
 
-		isStream := streamMarker.IsStream()
-		if !isStream && opts.streamingPaths != nil {
-			if _, ok := opts.streamingPaths[routePath]; ok {
-				isStream = true
+		if _, alreadyMarked := attributes.GetTag(traceway.StreamAttributeKey); !alreadyMarked {
+			markStream := false
+			if opts.streamingPaths != nil {
+				if _, ok := opts.streamingPaths[routePath]; ok {
+					markStream = true
+				}
+			}
+			if !markStream {
+				markStream = traceway.IsStreamingContentType(c.GetRespHeader("Content-Type")) ||
+					traceway.IsWebSocketUpgrade(statusCode, c.GetRespHeader("Upgrade"))
+			}
+			if markStream {
+				attributes.SetTag(traceway.StreamAttributeKey, "true")
 			}
 		}
-		if !isStream {
-			isStream = traceway.IsStreamingContentType(c.GetRespHeader("Content-Type")) ||
-				traceway.IsWebSocketUpgrade(statusCode, c.GetRespHeader("Upgrade"))
-		}
 
-		traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags(), isStream)
+		traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags())
 
 		hasHandlerError := nextErr != nil && stackTraceFormatted == nil
 
