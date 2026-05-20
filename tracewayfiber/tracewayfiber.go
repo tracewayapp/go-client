@@ -69,6 +69,7 @@ type TracewayFiberOptions struct {
 	repanic          bool
 	recordUnmatched  bool
 	ignoredPaths     map[string]struct{}
+	streamingPaths   map[string]struct{}
 	onErrorRecording RecordingFlag
 	filter           func(c fiber.Ctx) bool
 }
@@ -92,6 +93,17 @@ func WithIgnoredPaths(paths ...string) func(*TracewayFiberOptions) {
 		}
 		for _, p := range paths {
 			s.ignoredPaths[p] = struct{}{}
+		}
+	}
+}
+
+func WithStreamingPaths(paths ...string) func(*TracewayFiberOptions) {
+	return func(s *TracewayFiberOptions) {
+		if s.streamingPaths == nil {
+			s.streamingPaths = make(map[string]struct{}, len(paths))
+		}
+		for _, p := range paths {
+			s.streamingPaths[p] = struct{}{}
 		}
 	}
 }
@@ -182,6 +194,14 @@ func GetTraceFromCtx(c fiber.Ctx) *traceway.TraceContext {
 	return nil
 }
 
+func MarkStream(c fiber.Ctx) {
+	if v := c.Locals(string(traceway.CtxStreamMarkerKey)); v != nil {
+		if m, ok := v.(*traceway.StreamMarker); ok {
+			m.Mark()
+		}
+	}
+}
+
 func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.Handler {
 	opts := &TracewayFiberOptions{repanic: true, recordUnmatched: false, onErrorRecording: 0}
 	for _, o := range options {
@@ -217,9 +237,11 @@ func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.
 			Id: uuid.NewString(),
 		}
 		attributes := traceway.NewAttributes()
+		streamMarker := traceway.NewStreamMarker()
 
 		c.Locals(string(traceway.CtxAttributesKey), attributes)
 		c.Locals(string(traceway.CtxTraceKey), tc)
+		c.Locals(string(traceway.CtxStreamMarkerKey), streamMarker)
 
 		stackTraceFormatted, nextErr, panicErr := wrapAndExecute(opts.repanic, c)
 
@@ -242,7 +264,18 @@ func New(connectionString string, options ...func(*TracewayFiberOptions)) fiber.
 			return effectiveErr
 		}
 
-		traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags())
+		isStream := streamMarker.IsStream()
+		if !isStream && opts.streamingPaths != nil {
+			if _, ok := opts.streamingPaths[routePath]; ok {
+				isStream = true
+			}
+		}
+		if !isStream {
+			isStream = traceway.IsStreamingContentType(c.GetRespHeader("Content-Type")) ||
+				traceway.IsWebSocketUpgrade(statusCode, c.GetRespHeader("Upgrade"))
+		}
+
+		traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags(), isStream)
 
 		hasHandlerError := nextErr != nil && stackTraceFormatted == nil
 

@@ -23,6 +23,7 @@ type TracewayChiOptions = tracewayhttp.TracewayHttpOptions
 var (
 	WithFilter             = tracewayhttp.WithFilter
 	WithIgnoredPaths       = tracewayhttp.WithIgnoredPaths
+	WithStreamingPaths     = tracewayhttp.WithStreamingPaths
 	WithOnErrorRecording   = tracewayhttp.WithOnErrorRecording
 	WithRepanic            = tracewayhttp.WithRepanic
 	WithDebug              = tracewayhttp.WithDebug

@@ -87,6 +87,7 @@ type TracewayFasthttpOptions struct {
 	tracewayOpts     []func(*traceway.TracewayOptions)
 	repanic          bool
 	ignoredPaths     map[string]struct{}
+	streamingPaths   map[string]struct{}
 	onErrorRecording RecordingFlag
 	filter           func(ctx *fasthttp.RequestCtx) bool
 }
@@ -104,6 +105,17 @@ func WithIgnoredPaths(paths ...string) func(*TracewayFasthttpOptions) {
 		}
 		for _, p := range paths {
 			s.ignoredPaths[p] = struct{}{}
+		}
+	}
+}
+
+func WithStreamingPaths(paths ...string) func(*TracewayFasthttpOptions) {
+	return func(s *TracewayFasthttpOptions) {
+		if s.streamingPaths == nil {
+			s.streamingPaths = make(map[string]struct{}, len(paths))
+		}
+		for _, p := range paths {
+			s.streamingPaths[p] = struct{}{}
 		}
 	}
 }
@@ -194,6 +206,14 @@ func GetTraceFromCtx(ctx *fasthttp.RequestCtx) *traceway.TraceContext {
 	return nil
 }
 
+func MarkStream(ctx *fasthttp.RequestCtx) {
+	if v := ctx.UserValue(string(traceway.CtxStreamMarkerKey)); v != nil {
+		if m, ok := v.(*traceway.StreamMarker); ok {
+			m.Mark()
+		}
+	}
+}
+
 func New(connectionString string, options ...func(*TracewayFasthttpOptions)) func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	opts := &TracewayFasthttpOptions{repanic: true, onErrorRecording: 0}
 	for _, o := range options {
@@ -226,9 +246,11 @@ func New(connectionString string, options ...func(*TracewayFasthttpOptions)) fun
 				Id: uuid.NewString(),
 			}
 			attributes := traceway.NewAttributes()
+			streamMarker := traceway.NewStreamMarker()
 
 			ctx.SetUserValue(string(traceway.CtxAttributesKey), attributes)
 			ctx.SetUserValue(string(traceway.CtxTraceKey), tc)
+			ctx.SetUserValue(string(traceway.CtxStreamMarkerKey), streamMarker)
 
 			stackTraceFormatted, err := wrapAndExecute(opts.repanic, next, ctx)
 
@@ -250,7 +272,18 @@ func New(connectionString string, options ...func(*TracewayFasthttpOptions)) fun
 				return
 			}
 
-			traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags())
+			isStream := streamMarker.IsStream()
+			if !isStream && opts.streamingPaths != nil {
+				if _, ok := opts.streamingPaths[routePath]; ok {
+					isStream = true
+				}
+			}
+			if !isStream {
+				isStream = traceway.IsStreamingContentType(string(ctx.Response.Header.ContentType())) ||
+					traceway.IsWebSocketUpgrade(statusCode, string(ctx.Response.Header.Peek("Upgrade")))
+			}
+
+			traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags(), isStream)
 
 			if stackTraceFormatted != nil {
 				exceptionTags := map[string]string{}

@@ -87,6 +87,7 @@ type TracewayHttpOptions struct {
 	tracewayOpts     []func(*traceway.TracewayOptions)
 	repanic          bool
 	ignoredPaths     map[string]struct{}
+	streamingPaths   map[string]struct{}
 	onErrorRecording RecordingFlag
 	filter           func(*http.Request) bool
 }
@@ -104,6 +105,17 @@ func WithIgnoredPaths(paths ...string) func(*TracewayHttpOptions) {
 		}
 		for _, p := range paths {
 			s.ignoredPaths[p] = struct{}{}
+		}
+	}
+}
+
+func WithStreamingPaths(paths ...string) func(*TracewayHttpOptions) {
+	return func(s *TracewayHttpOptions) {
+		if s.streamingPaths == nil {
+			s.streamingPaths = make(map[string]struct{}, len(paths))
+		}
+		for _, p := range paths {
+			s.streamingPaths[p] = struct{}{}
 		}
 	}
 }
@@ -226,9 +238,11 @@ func New(connectionString string, options ...func(*TracewayHttpOptions)) func(ht
 				Id: uuid.NewString(),
 			}
 			attributes := traceway.NewAttributes()
+			streamMarker := traceway.NewStreamMarker()
 
 			ctx := context.WithValue(r.Context(), string(traceway.CtxAttributesKey), attributes)
 			ctx = context.WithValue(ctx, string(traceway.CtxTraceKey), tc)
+			ctx = context.WithValue(ctx, string(traceway.CtxStreamMarkerKey), streamMarker)
 			r = r.WithContext(ctx)
 
 			rw := newResponseWriter(w)
@@ -253,7 +267,18 @@ func New(connectionString string, options ...func(*TracewayHttpOptions)) func(ht
 				return
 			}
 
-			traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags())
+			isStream := streamMarker.IsStream()
+			if !isStream && opts.streamingPaths != nil {
+				if _, ok := opts.streamingPaths[routePath]; ok {
+					isStream = true
+				}
+			}
+			if !isStream {
+				isStream = traceway.IsStreamingContentType(rw.Header().Get("Content-Type")) ||
+					traceway.IsWebSocketUpgrade(statusCode, rw.Header().Get("Upgrade"))
+			}
+
+			traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, cIP, attributes.GetTags(), isStream)
 
 			if stackTraceFormatted != nil {
 				exceptionTags := map[string]string{}

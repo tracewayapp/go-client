@@ -28,6 +28,7 @@ type tracewayContextKey string
 
 const CtxAttributesKey tracewayContextKey = "TRACEWAY_ATTRIBUTES"
 const CtxTraceKey tracewayContextKey = "TRACEWAY_TRACE"
+const CtxStreamMarkerKey tracewayContextKey = "TRACEWAY_STREAM_MARKER"
 
 type Attributes struct {
 	tags map[string]string
@@ -274,7 +275,66 @@ type Trace struct {
 	Attributes         map[string]string `json:"attributes,omitempty"`
 	Spans              []Span            `json:"spans,omitempty"`
 	IsTask             bool              `json:"isTask,omitempty"`
+	IsStream           bool              `json:"isStream,omitempty"`
 	DistributedTraceId string            `json:"distributedTraceId,omitempty"`
+}
+
+type StreamMarker struct {
+	mu       sync.Mutex
+	isStream bool
+}
+
+func NewStreamMarker() *StreamMarker { return &StreamMarker{} }
+
+func (m *StreamMarker) Mark() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.isStream = true
+	m.mu.Unlock()
+}
+
+func (m *StreamMarker) IsStream() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.isStream
+}
+
+func GetStreamMarkerFromContext(ctx context.Context) *StreamMarker {
+	if ctx == nil {
+		return nil
+	}
+	if m, ok := ctx.Value(string(CtxStreamMarkerKey)).(*StreamMarker); ok {
+		return m
+	}
+	return nil
+}
+
+func MarkStream(ctx context.Context) {
+	GetStreamMarkerFromContext(ctx).Mark()
+}
+
+// IsStreamFromContext reports whether MarkStream has been called on the
+// current request context (or its marker has otherwise been set).
+func IsStreamFromContext(ctx context.Context) bool {
+	return GetStreamMarkerFromContext(ctx).IsStream()
+}
+
+	if contentType == "" {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/event-stream")
+}
+
+func IsWebSocketUpgrade(statusCode int, upgradeHeader string) bool {
+	if statusCode == http.StatusSwitchingProtocols {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(upgradeHeader), "websocket")
 }
 
 type Span struct {
@@ -749,7 +809,7 @@ func CaptureTrace(
 	if collectionFrameStore == nil {
 		return
 	}
-	CaptureTraceWithAttributes(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil)
+	captureTraceInternal(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, nil, false)
 }
 
 func CaptureTraceWithAttributes(
@@ -760,6 +820,32 @@ func CaptureTraceWithAttributes(
 	statusCode, bodySize int,
 	clientIP string,
 	attributes map[string]string,
+) {
+	captureTraceInternal(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, attributes, false)
+}
+
+func CaptureTraceWithAttributesAndStream(
+	tc *TraceContext,
+	endpoint string,
+	d time.Duration,
+	startedAt time.Time,
+	statusCode, bodySize int,
+	clientIP string,
+	attributes map[string]string,
+	isStream bool,
+) {
+	captureTraceInternal(tc, endpoint, d, startedAt, statusCode, bodySize, clientIP, attributes, isStream)
+}
+
+func captureTraceInternal(
+	tc *TraceContext,
+	endpoint string,
+	d time.Duration,
+	startedAt time.Time,
+	statusCode, bodySize int,
+	clientIP string,
+	attributes map[string]string,
+	isStream bool,
 ) {
 	if collectionFrameStore == nil {
 		return
@@ -779,6 +865,7 @@ func CaptureTraceWithAttributes(
 			ClientIP:           clientIP,
 			Attributes:         attributes,
 			Spans:              tc.GetSpans(),
+			IsStream:           isStream,
 			DistributedTraceId: tc.DistributedTraceId,
 		},
 	}

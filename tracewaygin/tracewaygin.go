@@ -93,6 +93,7 @@ type TracewayGinOptions struct {
 	recordUnmatched  bool
 	recordStatic     bool
 	ignoredPaths     map[string]struct{}
+	streamingPaths   map[string]struct{}
 	onErrorRecording RecordingFlag
 }
 
@@ -115,6 +116,17 @@ func WithIgnoredPaths(paths ...string) func(*TracewayGinOptions) {
 		}
 		for _, p := range paths {
 			s.ignoredPaths[p] = struct{}{}
+		}
+	}
+}
+
+func WithStreamingPaths(paths ...string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		if s.streamingPaths == nil {
+			s.streamingPaths = make(map[string]struct{}, len(paths))
+		}
+		for _, p := range paths {
+			s.streamingPaths[p] = struct{}{}
 		}
 	}
 }
@@ -229,12 +241,15 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		}
 
 		attributes := traceway.NewAttributes()
+		streamMarker := traceway.NewStreamMarker()
 
 		ctx := context.WithValue(c.Request.Context(), string(traceway.CtxAttributesKey), attributes)
 		ctx = context.WithValue(ctx, string(traceway.CtxTraceKey), tc)
+		ctx = context.WithValue(ctx, string(traceway.CtxStreamMarkerKey), streamMarker)
 		c.Request = c.Request.WithContext(ctx)
 		c.Set(string(traceway.CtxAttributesKey), attributes)
 		c.Set(string(traceway.CtxTraceKey), tc)
+		c.Set(string(traceway.CtxStreamMarkerKey), streamMarker)
 
 		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
 
@@ -261,7 +276,18 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 			return
 		}
 
-		traceway.CaptureTraceWithAttributes(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, attributes.GetTags())
+		isStream := streamMarker.IsStream()
+		if !isStream && opts.streamingPaths != nil {
+			if _, ok := opts.streamingPaths[routePath]; ok {
+				isStream = true
+			}
+		}
+		if !isStream {
+			isStream = traceway.IsStreamingContentType(c.Writer.Header().Get("Content-Type")) ||
+				traceway.IsWebSocketUpgrade(statusCode, c.Writer.Header().Get("Upgrade"))
+		}
+
+		traceway.CaptureTraceWithAttributesAndStream(tc, traceEndpoint, duration, start, statusCode, bodySize, clientIP, attributes.GetTags(), isStream)
 
 		exceptionTags := map[string]string{}
 
