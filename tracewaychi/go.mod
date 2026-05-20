@@ -13,3 +13,5 @@ require (
 )
 
 replace go.tracewayapp.com/tracewayhttp => ../tracewayhttp
+
+replace go.tracewayapp.com => ../
