@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/google/uuid v1.6.0
 	github.com/valyala/fasthttp v1.62.0
-	go.tracewayapp.com v1.0.3
+	go.tracewayapp.com v1.0.4
 )
 
 require (
@@ -32,5 +32,3 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )
-
-replace go.tracewayapp.com => ../
