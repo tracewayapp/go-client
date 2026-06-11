@@ -18,8 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"go.tracewayapp.com/metrics/cpu"
-	"go.tracewayapp.com/metrics/mem"
+	"go.tracewayapp.com/metrics/system"
 
 	"github.com/google/uuid"
 )
@@ -363,6 +362,8 @@ type CollectionFrameStore struct {
 
 	messageQueue chan CollectionFrameMessage
 
+	systemCollector *system.Collector
+
 	lastUploadStarted *time.Time
 
 	apiUrl              string
@@ -412,6 +413,13 @@ func InitCollectionFrameStore(
 		errorSampleRate:     errorSampleRate,
 	}
 
+	systemCollector, err := system.NewCollector()
+	if err == nil {
+		store.systemCollector = systemCollector
+	} else if debug {
+		log.Println("Traceway: system metrics unavailable:", err)
+	}
+
 	store.wg.Add(1)
 	go store.process()
 	go store.processMetrics()
@@ -449,27 +457,25 @@ func (s *CollectionFrameStore) safeProcessMetrics() {
 			log.Print("Traceway: failed to get metrics data")
 		}
 	}()
-	cpuPercent, err := cpu.GetCpuPercent(time.Second)
-	if err == nil {
-		CaptureMetric(MetricNameCpuUsage, cpuPercent)
-	} else {
-		if s.debug {
-			log.Println("Traceway cpu not read", err)
+	if s.systemCollector != nil {
+		stats, err := s.systemCollector.Read(context.Background())
+		if err == nil {
+			if stats.HasCpuPercent {
+				CaptureMetric(MetricNameCpuUsage, stats.CpuPercent)
+			}
+			if stats.TotalMemory > 0 {
+				CaptureMetric(MetricNameMemoryTotal, float64(stats.TotalMemory)/1024/1024)
+			}
+		} else {
+			if s.debug {
+				log.Println("Traceway system metrics not read", err)
+			}
 		}
 	}
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	CaptureMetric(MetricNameMemoryUsage, float64(m.Alloc)/1024/1024)
-
-	totalMem, err := mem.GetTotalMemory()
-	if err == nil && totalMem > 0 {
-		CaptureMetric(MetricNameMemoryTotal, float64(totalMem)/1024/1024)
-	} else {
-		if s.debug {
-			log.Println("Traceway total mem not read", err)
-		}
-	}
 	CaptureMetric(MetricNameGoRoutines, float64(runtime.NumGoroutine()))
 	CaptureMetric(MetricNameHeapObjects, float64(m.HeapObjects))
 	CaptureMetric(MetricNameNumGC, float64(m.NumGC))

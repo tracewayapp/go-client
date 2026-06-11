@@ -95,11 +95,12 @@ for mod in "${SUBMODULES[@]}"; do
 
     echo -e "${YELLOW}Updating $mod/go.mod...${NC}"
 
-    # Remove the replace directive
-    sed -i '' '/^replace go\.tracewayapp\.com => \.\.\/$/d' "$MOD_FILE"
+    # Remove the replace directive (-i.bak works with both BSD and GNU sed)
+    sed -i.bak '/^replace go\.tracewayapp\.com => \.\.\/$/d' "$MOD_FILE"
 
     # Update the require version of go.tracewayapp.com to the new version
-    sed -i '' "s|go\.tracewayapp\.com v[^ ]*|go.tracewayapp.com $VERSION|" "$MOD_FILE"
+    sed -i.bak "s|go\.tracewayapp\.com v[^ ]*|go.tracewayapp.com $VERSION|" "$MOD_FILE"
+    rm -f "$MOD_FILE.bak"
 
     # Run go mod tidy
     (cd "$MOD_DIR" && go mod tidy)
