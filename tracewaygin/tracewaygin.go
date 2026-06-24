@@ -192,6 +192,18 @@ func WithErrorSampleRate(val float64) func(*TracewayGinOptions) {
 	}
 }
 
+func WithProfiling(serviceName string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithProfiling(serviceName))
+	}
+}
+
+func WithProfilingInterval(d time.Duration) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithProfilingInterval(d))
+	}
+}
+
 func isStaticRoute(c *gin.Context) bool {
 	handlerName := c.HandlerName()
 	return strings.Contains(handlerName, "StaticFile") ||

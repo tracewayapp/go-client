@@ -233,6 +233,22 @@ func TestWithErrorSampleRate(t *testing.T) {
 		t.Error("expected one traceway option appended")
 	}
 }
+
+func TestWithProfiling(t *testing.T) {
+	opts := &TracewayGinOptions{}
+	WithProfiling("shop")(opts)
+	if len(opts.tracewayOpts) != 1 {
+		t.Error("expected one traceway option appended")
+	}
+}
+
+func TestWithProfilingInterval(t *testing.T) {
+	opts := &TracewayGinOptions{}
+	WithProfilingInterval(5 * time.Second)(opts)
+	if len(opts.tracewayOpts) != 1 {
+		t.Error("expected one traceway option appended")
+	}
+}
 func TestMiddleware_NormalRequest(t *testing.T) {
 	rec := serveGin(t, testMiddleware, "GET", "/hello", nil, func(c *gin.Context) {
 		c.String(http.StatusOK, "OK")
