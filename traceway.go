@@ -627,6 +627,9 @@ type TracewayOptions struct {
 	serverName          string
 	sampleRate          float64
 	errorSampleRate     float64
+	profilingEnabled    bool
+	profilingService    string
+	profilingInterval   time.Duration
 }
 
 func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
@@ -639,6 +642,7 @@ func NewTracewayOptions(options ...func(*TracewayOptions)) *TracewayOptions {
 		serverName:          getHostname(),
 		sampleRate:          1,
 		errorSampleRate:     1,
+		profilingInterval:   defaultProfilingInterval,
 	}
 	for _, o := range options {
 		o(svr)
@@ -715,6 +719,13 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 		tracewayOptions.sampleRate,
 		tracewayOptions.errorSampleRate,
 	)
+
+	if tracewayOptions.profilingEnabled {
+		if err := startProfiler(apiUrl, token, tracewayOptions); err != nil && tracewayOptions.debug {
+			log.Printf("Traceway: profiling disabled: %v", err)
+		}
+	}
+
 	return nil
 }
 
