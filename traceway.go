@@ -699,7 +699,10 @@ func Init(connectionString string, options ...func(*TracewayOptions)) error {
 	if collectionFrameStore != nil {
 		return fmt.Errorf("Second Traceway initialization detected")
 	}
-	connParts := strings.Split(connectionString, "@")
+	connParts := strings.SplitN(connectionString, "@", 2)
+	if len(connParts) != 2 {
+		return fmt.Errorf("traceway: invalid connection string, expected \"<token>@<url>\"")
+	}
 
 	token := connParts[0]
 	apiUrl := connParts[1]
