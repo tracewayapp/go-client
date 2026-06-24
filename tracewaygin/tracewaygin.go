@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func processGinErrors(c *gin.Context, tc *traceway.TraceContext, exceptionTags m
 	}
 }
 
-func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
+func wrapAndExecute(repanic bool, c *gin.Context, routePath string) (s *string, e error) {
 	defer func() {
 		if r := recover(); r != nil {
 			m := traceway.FormatRWithStack(r, traceway.CaptureStack(2))
@@ -72,7 +73,10 @@ func wrapAndExecute(repanic bool, c *gin.Context) (s *string, e error) {
 			}
 		}
 	}()
-	c.Next()
+	pprof.Do(c.Request.Context(), pprof.Labels("endpoint", routePath), func(labeledCtx context.Context) {
+		c.Request = c.Request.WithContext(labeledCtx)
+		c.Next()
+	})
 	return nil, nil
 }
 
@@ -188,6 +192,18 @@ func WithErrorSampleRate(val float64) func(*TracewayGinOptions) {
 	}
 }
 
+func WithProfiling(serviceName string) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithProfiling(serviceName))
+	}
+}
+
+func WithProfilingInterval(d time.Duration) func(*TracewayGinOptions) {
+	return func(s *TracewayGinOptions) {
+		s.tracewayOpts = append(s.tracewayOpts, traceway.WithProfilingInterval(d))
+	}
+}
+
 func isStaticRoute(c *gin.Context) bool {
 	handlerName := c.HandlerName()
 	return strings.Contains(handlerName, "StaticFile") ||
@@ -248,7 +264,7 @@ func New(connectionString string, options ...func(*TracewayGinOptions)) gin.Hand
 		c.Set(string(traceway.CtxAttributesKey), attributes)
 		c.Set(string(traceway.CtxTraceKey), tc)
 
-		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c)
+		stackTraceFormatted, err := wrapAndExecute(opts.repanic, c, routePath)
 
 		if err != nil {
 			errForPanic := err

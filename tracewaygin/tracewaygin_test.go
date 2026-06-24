@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,22 @@ func TestWithSampleRate(t *testing.T) {
 func TestWithErrorSampleRate(t *testing.T) {
 	opts := &TracewayGinOptions{}
 	WithErrorSampleRate(0.25)(opts)
+	if len(opts.tracewayOpts) != 1 {
+		t.Error("expected one traceway option appended")
+	}
+}
+
+func TestWithProfiling(t *testing.T) {
+	opts := &TracewayGinOptions{}
+	WithProfiling("shop")(opts)
+	if len(opts.tracewayOpts) != 1 {
+		t.Error("expected one traceway option appended")
+	}
+}
+
+func TestWithProfilingInterval(t *testing.T) {
+	opts := &TracewayGinOptions{}
+	WithProfilingInterval(5 * time.Second)(opts)
 	if len(opts.tracewayOpts) != 1 {
 		t.Error("expected one traceway option appended")
 	}
@@ -579,6 +596,50 @@ func TestWrapAndExecute_PanicString_NoRepanic(t *testing.T) {
 	})
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_EndpointPprofLabel(t *testing.T) {
+	r := gin.New()
+	r.Use(testMiddleware)
+	var gotLabel string
+	var hadLabel bool
+	r.GET("/users/:id", func(c *gin.Context) {
+		gotLabel, hadLabel = pprof.Label(c.Request.Context(), "endpoint")
+		c.String(http.StatusOK, "ok")
+	})
+	req := httptest.NewRequest("GET", "/users/42", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%s", rec.Code, rec.Body.String())
+	}
+	if !hadLabel {
+		t.Fatal("expected endpoint pprof label to be set during handler execution")
+	}
+	if gotLabel != "/users/:id" {
+		t.Errorf("expected endpoint label %q, got %q", "/users/:id", gotLabel)
+	}
+}
+
+func TestMiddleware_EndpointPprofLabel_Unmatched(t *testing.T) {
+	r := gin.New()
+	mw := New("testtoken@http://localhost:19876/noop", WithRecordUnmatched(true))
+	r.Use(mw)
+	var gotLabel string
+	var hadLabel bool
+	r.NoRoute(func(c *gin.Context) {
+		gotLabel, hadLabel = pprof.Label(c.Request.Context(), "endpoint")
+		c.String(http.StatusNotFound, "nope")
+	})
+	req := httptest.NewRequest("GET", "/no/such/route", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if !hadLabel {
+		t.Fatal("expected endpoint pprof label to be set for recorded unmatched route")
+	}
+	if gotLabel != "/no/such/route" {
+		t.Errorf("expected endpoint label %q, got %q", "/no/such/route", gotLabel)
 	}
 }
 
